@@ -81,7 +81,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
         }
 
         .btn-action {
@@ -203,15 +203,15 @@
 
         /* TELEMETRY METRICS */
         .gauge-container {
-            margin: 10px 0 14px 0;
+            margin: 6px 0 12px 0;
         }
 
         .gauge-bar-wrapper {
             position: relative;
-            height: 24px;
+            height: 22px;
             background: #0a0f1d;
             border: 1px solid var(--card-border);
-            border-radius: 12px;
+            border-radius: 11px;
             overflow: hidden;
         }
 
@@ -227,8 +227,8 @@
 
         .gauge-indicator {
             position: absolute;
-            top: 3px;
-            bottom: 3px;
+            top: 2px;
+            bottom: 2px;
             left: 50%;
             width: 18px;
             background: var(--accent-cyan);
@@ -238,11 +238,27 @@
             transition: left 0.05s linear;
         }
 
+        /* 16 MẮT CẢM BIẾN */
+        .sensor-cell {
+            background: #1e293b;
+            color: #64748b;
+            font-size: 0.6rem;
+            font-weight: 800;
+            height: 28px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #334155;
+            transition: background 0.05s, box-shadow 0.05s;
+        }
+
         .tele-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 8px;
             text-align: center;
+            margin-top: 10px;
         }
 
         .tele-box {
@@ -259,7 +275,7 @@
         }
 
         .tele-val {
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 800;
             color: var(--text-main);
             margin-top: 2px;
@@ -373,6 +389,20 @@
 </head>
 <body>
 
+    <!-- MODAL CALIBRATION POPUP -->
+    <div id="calibModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center;">
+        <div style="background: #131b2e; border: 2px solid #00f0ff; border-radius: 16px; padding: 24px; max-width: 340px; width: 100%; box-shadow: 0 0 30px rgba(0,240,255,0.4);">
+            <div id="calibIcon" style="font-size: 3rem; margin-bottom: 10px;">🌀</div>
+            <h2 id="calibTitle" style="color: #00f0ff; font-size: 1.2rem; margin-bottom: 8px;">ĐANG CALIB QUÉT VẠCH</h2>
+            <p id="calibDesc" style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 16px;">Hãy lia đầu xe qua lại vạch đen liên tục trong 4 giây!</p>
+            <div style="height: 12px; background: #0a0f1d; border-radius: 6px; overflow: hidden; margin-bottom: 12px;">
+                <div id="calibProgress" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00f0ff, #00ff66); transition: width 0.1s linear;"></div>
+            </div>
+            <div id="calibTimer" style="font-size: 1.5rem; font-weight: 800; color: #ffcc00;">4.0s</div>
+            <button id="calibCloseBtn" style="display: none; margin-top: 16px; background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; width: 100%; cursor: pointer;" onclick="closeCalibModal()">ĐÃ SẴN SÀNG!</button>
+        </div>
+    </div>
+
     <header>
         <div class="title-box">
             <h1>🏁 RACECAR 16-SEN</h1>
@@ -386,7 +416,7 @@
 
     <!-- NÚT ĐIỀU KHIỂN NHANH -->
     <div class="action-grid">
-        <button class="btn-action btn-calib" onclick="sendCmd('CMD:CALIB')">
+        <button class="btn-action btn-calib" onclick="startCalibUI()">
             <span>🌀</span>
             <span>CALIB 4S</span>
         </button>
@@ -402,6 +432,19 @@
             <span>🚀</span>
             <span>LƯỢT 2: BUNG TỐC ĐỘ ĐUA</span>
         </button>
+    </div>
+
+    <!-- ĐIỀU CHỈNH TỐC ĐỘ DÒ SA BÀN (LƯỢT 1) -->
+    <div class="card" style="padding: 10px 12px;">
+        <div class="card-header" style="margin-bottom: 6px;">
+            <span>🐢 TỐC ĐỘ DÒ SA BÀN (LƯỢT 1)</span>
+            <span id="scanSpdVal" style="color: var(--accent-cyan); font-weight: 800;">110 PWM</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="switch-btn" onclick="adjustScanSpeed(-10)" style="padding: 6px 12px;">-10</button>
+            <input type="range" id="sliderScanSpd" min="60" max="180" step="5" value="110" style="flex: 1; accent-color: var(--accent-cyan);" oninput="onScanSpeedChange(this.value)">
+            <button class="switch-btn" onclick="adjustScanSpeed(10)" style="padding: 6px 12px;">+10</button>
+        </div>
     </div>
 
     <!-- KHU VỰC CHỌN MAP & LÀN -->
@@ -437,6 +480,17 @@
             <div class="gauge-bar-wrapper">
                 <div class="gauge-center-line"></div>
                 <div id="gaugeIndicator" class="gauge-indicator"></div>
+            </div>
+        </div>
+
+        <!-- THANH 16 MẮT CẢM BIẾN TRỰC QUAN -->
+        <div style="margin-top: 8px; background: #0a0f1d; padding: 8px; border-radius: 8px; border: 1px solid #1a253d;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-bottom: 6px;">
+                <span>16 MẮT CẢM BIẾN (0..15):</span>
+                <span id="blackCountText" style="color: #00ff66; font-weight: 700;">0/16 MẮT ĐEN</span>
+            </div>
+            <div id="sensorGrid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px;">
+                <!-- 16 ô vuông được tạo tự động bởi JS -->
             </div>
         </div>
 
@@ -516,6 +570,7 @@
         let currentSelectedMap = 0;
         let isRightLane = false;
         let lastTicksAvg = 0;
+        let currentScanSpeed = 110;
 
         // Dữ liệu mặc định 3 map trên Web
         const mapsData = [
@@ -547,6 +602,20 @@
                 { ticks: 7900, speed: 60,  action: 4 }
             ]
         ];
+
+        // Khởi tạo 16 ô hiển thị mắt cảm biến
+        function initSensorGrid() {
+            const grid = document.getElementById('sensorGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < 16; i++) {
+                const cell = document.createElement('div');
+                cell.id = `sen_${i}`;
+                cell.className = 'sensor-cell';
+                cell.innerText = i;
+                grid.appendChild(cell);
+            }
+        }
+        initSensorGrid();
 
         function log(msg) {
             const con = document.getElementById('logConsole');
@@ -621,6 +690,70 @@
         }
 
         // =====================================================================
+        // CALIBRATION POPUP & COUNTDOWN
+        // =====================================================================
+        let calibTimerInterval = null;
+
+        function startCalibUI() {
+            sendCmd('CMD:CALIB');
+            const modal = document.getElementById('calibModal');
+            const prog = document.getElementById('calibProgress');
+            const timerTxt = document.getElementById('calibTimer');
+            const closeBtn = document.getElementById('calibCloseBtn');
+            const title = document.getElementById('calibTitle');
+            const desc = document.getElementById('calibDesc');
+            const icon = document.getElementById('calibIcon');
+
+            modal.style.display = 'flex';
+            closeBtn.style.display = 'none';
+            icon.innerText = '🌀';
+            title.innerText = 'ĐANG CALIB QUÉT VẠCH';
+            desc.innerText = 'Hãy lia đầu xe qua lại vạch đen liên tục trong 4 giây!';
+            prog.style.width = '0%';
+
+            let elapsed = 0;
+            const total = 4000;
+            clearInterval(calibTimerInterval);
+
+            calibTimerInterval = setInterval(() => {
+                elapsed += 100;
+                const remain = Math.max((total - elapsed) / 1000, 0);
+                timerTxt.innerText = `${remain.toFixed(1)}s`;
+                prog.style.width = `${Math.min((elapsed / total) * 100, 100)}%`;
+
+                if (elapsed >= total) {
+                    clearInterval(calibTimerInterval);
+                    timerTxt.innerText = 'ĐÃ LƯU NGƯỠNG!';
+                    icon.innerText = '✅';
+                    title.innerText = 'CALIB HOÀN TẤT!';
+                    desc.innerText = 'Cảm biến đã nhận diện thành công Min/Max! Đặt xe lên line để xem các mắt sáng.';
+                    closeBtn.style.display = 'block';
+                }
+            }, 100);
+        }
+
+        function closeCalibModal() {
+            document.getElementById('calibModal').style.display = 'none';
+        }
+
+        // =====================================================================
+        // ĐIỀU CHỈNH TỐC ĐỘ DÒ SA BÀN (SCAN SPEED)
+        // =====================================================================
+        function onScanSpeedChange(val) {
+            currentScanSpeed = parseInt(val);
+            document.getElementById('scanSpdVal').innerText = `${currentScanSpeed} PWM`;
+            document.getElementById('sliderScanSpd').value = currentScanSpeed;
+            sendCmd(`CMD:SCAN_SPD:${currentScanSpeed}`);
+        }
+
+        function adjustScanSpeed(delta) {
+            let nextVal = currentScanSpeed + delta;
+            if (nextVal < 60) nextVal = 60;
+            if (nextVal > 180) nextVal = 180;
+            onScanSpeedChange(nextVal);
+        }
+
+        // =====================================================================
         // XỬ LÝ DỮ LIỆU TELEMETRY NHẬN TỪ ESP32
         // =====================================================================
         function handleTelemetry(event) {
@@ -628,7 +761,7 @@
             const text = dec.decode(event.target.value).trim();
 
             if (text.startsWith('T:')) {
-                // Định dạng: T:ticks_L,ticks_R,pos*10,pwm_L,pwm_R,map,wp,state
+                // Định dạng: T:ticks_L,ticks_R,pos*10,pwm_L,pwm_R,map,wp,state,mask
                 const parts = text.substring(2).split(',');
                 if (parts.length >= 8) {
                     const tl = parseInt(parts[0]);
@@ -638,6 +771,7 @@
                     const mr = parseInt(parts[4]);
                     const wp = parseInt(parts[6]);
                     const state = parseInt(parts[7]);
+                    const mask = parts.length >= 9 ? parseInt(parts[8]) : 0;
 
                     lastTicksAvg = Math.round((Math.abs(tl) + Math.abs(tr)) / 2);
 
@@ -655,10 +789,34 @@
                     // Cập nhật vị trí thước ngắm (-75.0 -> 0% .. 0 -> 50% .. +75.0 -> 100%)
                     const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
                     document.getElementById('gaugeIndicator').style.left = `${pct}%`;
+
+                    // Cập nhật 16 mắt cảm biến trực quan theo mask
+                    let blackCount = 0;
+                    for (let i = 0; i < 16; i++) {
+                        const isBlack = (mask & (1 << i)) !== 0;
+                        const cell = document.getElementById(`sen_${i}`);
+                        if (cell) {
+                            if (isBlack) {
+                                cell.style.background = '#00f0ff';
+                                cell.style.color = '#000';
+                                cell.style.boxShadow = '0 0 8px #00f0ff';
+                                cell.innerText = '#';
+                            } else {
+                                cell.style.background = '#1e293b';
+                                cell.style.color = '#475569';
+                                cell.style.boxShadow = 'none';
+                                cell.innerText = i;
+                            }
+                        }
+                        if (isBlack) blackCount++;
+                    }
+                    document.getElementById('blackCountText').innerText = `${blackCount}/16 MẮT ĐEN`;
                 }
             } else if (text.startsWith('ACK:')) {
                 log('📥 ' + text);
-                if (text === 'ACK:SCAN_FINISHED') {
+                if (text === 'ACK:CALIB_DONE') {
+                    log('✅ [CALIB XONG] Đã lưu ngưỡng và sẵn sàng!');
+                } else if (text === 'ACK:SCAN_FINISHED') {
                     log('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!');
                     alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!\nSố xung tổng cộng: ' + lastTicksAvg + ' ticks.');
                 }

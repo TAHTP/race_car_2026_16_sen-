@@ -20,6 +20,7 @@ static BLECharacteristic *pTxCharacteristic = NULL;
 static bool deviceConnected = false;
 static bool oldDeviceConnected = false;
 static CarRunMode_t s_car_mode = CAR_MODE_STOP;
+static int16_t s_scan_speed = 110; // Tốc độ quét mặc định tăng lên 110 để xe lăn bánh khỏe khoắn
 
 void car_set_run_mode(CarRunMode_t mode) {
     s_car_mode = mode;
@@ -34,6 +35,14 @@ void car_set_run_mode(CarRunMode_t mode) {
 
 CarRunMode_t car_get_run_mode(void) {
     return s_car_mode;
+}
+
+void car_set_scan_speed(int16_t speed) {
+    s_scan_speed = constrain(speed, 50, 220);
+}
+
+int16_t car_get_scan_speed(void) {
+    return s_scan_speed;
 }
 
 // Callbacks xử lý kết nối BLE
@@ -72,6 +81,11 @@ class RxCallbacks : public BLECharacteristicCallbacks {
             car_set_run_mode(CAR_MODE_STOP);
             sensor_start_sweep_calibration(4000);
             ble_send_string("ACK:CALIB_STARTED");
+        }
+        else if (rxValue.startsWith("CMD:SCAN_SPD:")) {
+            int16_t spd = rxValue.substring(13).toInt();
+            car_set_scan_speed(spd);
+            ble_send_string("ACK:SCAN_SPD_SET");
         }
         // 2. Chọn map & làn
         else if (rxValue.startsWith("CMD:MAP:")) {
@@ -166,16 +180,17 @@ void ble_send_string(const char *str) {
 
 void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos, 
                         int16_t pwm_l, int16_t pwm_r, 
-                        uint8_t map_idx, uint8_t wp_idx, uint8_t car_state) {
+                        uint8_t map_idx, uint8_t wp_idx, uint8_t car_state,
+                        uint16_t sensor_mask) {
     if (!deviceConnected || !pTxCharacteristic) return;
 
     // Định dạng gói tin CSV siêu nhẹ:
-    // T:<ticks_L>,<ticks_R>,<pos*10>,<pwm_L>,<pwm_R>,<map>,<wp>,<state>
-    char buf[64];
+    // T:<ticks_L>,<ticks_R>,<pos*10>,<pwm_L>,<pwm_R>,<map>,<wp>,<state>,<mask>
+    char buf[80];
     int16_t pos_scaled = (int16_t)roundf(line_pos * 10.0f);
-    snprintf(buf, sizeof(buf), "T:%ld,%ld,%d,%d,%d,%u,%u,%u",
+    snprintf(buf, sizeof(buf), "T:%ld,%ld,%d,%d,%d,%u,%u,%u,%u",
              (long)ticks_l, (long)ticks_r, pos_scaled,
-             pwm_l, pwm_r, map_idx, wp_idx, car_state);
+             pwm_l, pwm_r, map_idx, wp_idx, car_state, sensor_mask);
 
     pTxCharacteristic->setValue((uint8_t*)buf, strlen(buf));
     pTxCharacteristic->notify();

@@ -27,11 +27,17 @@ void controlTask(void *pvParameters) {
 
     for (;;) {
         // 1. Quá trình Calib cảm biến
+        static bool was_calibrating = false;
         if (sensor_is_calibrating()) {
+            was_calibrating = true;
             sensor_update_calibration_loop();
             motor_stop();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
+        } else if (was_calibrating) {
+            was_calibrating = false;
+            ble_send_string("ACK:CALIB_DONE");
+            Serial.println(">> ✅ [CALIB XONG] Đã lưu ngưỡng và sẵn sàng!");
         }
 
         // 2. Chế độ bám line tự động
@@ -47,8 +53,8 @@ void controlTask(void *pvParameters) {
             uint8_t wp_idx = 0;
 
             if (mode == CAR_MODE_SCAN) {
-                // LƯỢT 1: Quét sa bàn chậm, bám line PID cơ bản an toàn tuyệt đối (baseSpeed 70)
-                tgt_spd = 70;
+                // LƯỢT 1: Quét sa bàn chậm, bám line PID cơ bản an toàn tuyệt đối (tốc độ cài đặt)
+                tgt_spd = car_get_scan_speed();
                 act = ACTION_NORMAL;
                 wp_idx = 0;
 
@@ -97,8 +103,9 @@ void bleTask(void *pvParameters) {
             int16_t mr = motor_get_right_speed();
             uint8_t m_idx = map_get_selected();
             uint8_t state = (uint8_t)car_get_run_mode();
+            uint16_t mask = sensor_get_line_bits();
 
-            ble_send_telemetry(tl, tr, pos, ml, mr, m_idx, s_active_wp_idx, state);
+            ble_send_telemetry(tl, tr, pos, ml, mr, m_idx, s_active_wp_idx, state, mask);
         }
 
         vTaskDelay(pdMS_TO_TICKS(60)); // 60ms/lần (~16Hz) rất mượt cho Web
