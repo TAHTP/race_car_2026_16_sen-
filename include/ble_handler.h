@@ -8,8 +8,18 @@
 extern "C" {
 #endif
 
+typedef enum {
+    CAR_MODE_STOP = 0,
+    CAR_MODE_SCAN = 1,  // Lượt 1: Bò chậm lấy mốc sa bàn (baseSpeed 70)
+    CAR_MODE_RACE = 2   // Lượt 2: Bung tốc độ thi đấu theo bảng mốc xung
+} CarRunMode_t;
+
 // Khởi tạo BLE Server trên Core 0
 void ble_init(const char *device_name);
+
+// Quản lý chế độ chạy
+void car_set_run_mode(CarRunMode_t mode);
+CarRunMode_t car_get_run_mode(void);
 
 // Kiểm tra trạng thái kết nối
 bool ble_is_connected(void);

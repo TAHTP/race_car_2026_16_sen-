@@ -19,6 +19,22 @@ static BLEServer *pServer = NULL;
 static BLECharacteristic *pTxCharacteristic = NULL;
 static bool deviceConnected = false;
 static bool oldDeviceConnected = false;
+static CarRunMode_t s_car_mode = CAR_MODE_STOP;
+
+void car_set_run_mode(CarRunMode_t mode) {
+    s_car_mode = mode;
+    if (mode == CAR_MODE_STOP) {
+        pid_set_auto_mode(false);
+        motor_stop();
+    } else {
+        encoder_reset();
+        pid_set_auto_mode(true);
+    }
+}
+
+CarRunMode_t car_get_run_mode(void) {
+    return s_car_mode;
+}
 
 // Callbacks xử lý kết nối BLE
 class ServerCallbacks : public BLEServerCallbacks {
@@ -41,15 +57,19 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         rxValue.trim();
 
         // 1. Lệnh điều khiển chạy
-        if (rxValue == "CMD:START") {
-            encoder_reset();
-            pid_set_auto_mode(true);
-            ble_send_string("ACK:STARTED");
+        if (rxValue == "CMD:SCAN") {
+            // LƯỢT 1: Quét map chậm (bò tốc độ an toàn 70 để lấy mốc)
+            car_set_run_mode(CAR_MODE_SCAN);
+            ble_send_string("ACK:SCAN_MODE_STARTED");
+        } else if (rxValue == "CMD:RACE" || rxValue == "CMD:START") {
+            // LƯỢT 2: Bung tốc độ đua theo sa bàn
+            car_set_run_mode(CAR_MODE_RACE);
+            ble_send_string("ACK:RACE_MODE_STARTED");
         } else if (rxValue == "CMD:STOP") {
-            pid_set_auto_mode(false);
-            motor_stop();
+            car_set_run_mode(CAR_MODE_STOP);
             ble_send_string("ACK:STOPPED");
         } else if (rxValue == "CMD:CALIB") {
+            car_set_run_mode(CAR_MODE_STOP);
             sensor_start_sweep_calibration(4000);
             ble_send_string("ACK:CALIB_STARTED");
         }

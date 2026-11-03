@@ -79,16 +79,16 @@
         /* QUICK ACTION BUTTONS */
         .action-grid {
             display: grid;
-            grid-template-columns: 1fr 1.3fr 1.3fr;
+            grid-template-columns: 1fr 1fr;
             gap: 8px;
             margin-bottom: 14px;
         }
 
         .btn-action {
             border: none;
-            padding: 14px 8px;
+            padding: 12px 6px;
             border-radius: 10px;
-            font-size: 0.95rem;
+            font-size: 0.88rem;
             font-weight: 800;
             text-transform: uppercase;
             cursor: pointer;
@@ -110,10 +110,16 @@
             border: 1px solid var(--accent-yellow);
         }
 
-        .btn-start {
-            background: linear-gradient(135deg, #00aa44, #00ff66);
-            color: #05240f;
-            box-shadow: 0 0 15px rgba(0, 255, 102, 0.4);
+        .btn-scan {
+            background: linear-gradient(135deg, #0284c7, #38bdf8);
+            color: #042f2e;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+        }
+
+        .btn-race {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
         }
 
         .btn-stop {
@@ -384,13 +390,17 @@
             <span>🌀</span>
             <span>CALIB 4S</span>
         </button>
-        <button class="btn-action btn-start" onclick="sendCmd('CMD:START')">
-            <span>🚀</span>
-            <span>XUẤT PHÁT</span>
-        </button>
         <button class="btn-action btn-stop" onclick="sendCmd('CMD:STOP')">
             <span>🛑</span>
-            <span>DỪNG PHANH</span>
+            <span>DỪNG PHANH GẤP</span>
+        </button>
+        <button class="btn-action btn-scan" onclick="sendCmd('CMD:SCAN')">
+            <span>🐢</span>
+            <span>LƯỢT 1: QUÉT MAP CHẬM</span>
+        </button>
+        <button class="btn-action btn-race" onclick="sendCmd('CMD:RACE')">
+            <span>🚀</span>
+            <span>LƯỢT 2: BUNG TỐC ĐỘ ĐUA</span>
         </button>
     </div>
 
@@ -636,7 +646,11 @@
                     document.getElementById('valPwmL').innerText = ml;
                     document.getElementById('valPwmR').innerText = mr;
                     document.getElementById('posText').innerText = `VỊ TRÍ: ${pos.toFixed(1)}`;
-                    document.getElementById('wpStatus').innerText = `SECTOR ${wp} (${state ? 'ĐANG CHẠY' : 'DỪNG'})`;
+
+                    let stateText = '🛑 ĐANG DỪNG';
+                    if (state === 1) stateText = '🐢 LƯỢT 1: ĐANG QUÉT MAP';
+                    else if (state === 2) stateText = `🚀 LƯỢT 2: SECTOR ${wp}`;
+                    document.getElementById('wpStatus').innerText = stateText;
 
                     // Cập nhật vị trí thước ngắm (-75.0 -> 0% .. 0 -> 50% .. +75.0 -> 100%)
                     const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
@@ -644,6 +658,10 @@
                 }
             } else if (text.startsWith('ACK:')) {
                 log('📥 ' + text);
+                if (text === 'ACK:SCAN_FINISHED') {
+                    log('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!');
+                    alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!\nSố xung tổng cộng: ' + lastTicksAvg + ' ticks.');
+                }
             } else if (text.startsWith('WP:')) {
                 // Nhận cấu hình từ xe: WP:<map>,<idx>,<ticks>,<speed>,<action>
                 const p = text.substring(3).split(',');

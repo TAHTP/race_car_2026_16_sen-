@@ -35,17 +35,34 @@ void controlTask(void *pvParameters) {
         }
 
         // 2. Chế độ bám line tự động
-        if (pid_is_auto_mode() && calibrationReady) {
+        CarRunMode_t mode = car_get_run_mode();
+        if (mode != CAR_MODE_STOP && calibrationReady) {
             // Lấy số xung trung bình 2 bánh để định vị trên sa bàn
             int64_t ticks_l = encoder_get_ticks_L();
             int64_t ticks_r = encoder_get_ticks_R();
             uint32_t avg_ticks = (uint32_t)((labs(ticks_l) + labs(ticks_r)) / 2);
 
-            // Truy vấn kịch bản sa bàn cho phân đoạn hiện tại
             int16_t tgt_spd = 100;
             uint8_t act = 0;
             uint8_t wp_idx = 0;
-            map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);
+
+            if (mode == CAR_MODE_SCAN) {
+                // LƯỢT 1: Quét sa bàn chậm, bám line PID cơ bản an toàn tuyệt đối (baseSpeed 70)
+                tgt_spd = 70;
+                act = ACTION_NORMAL;
+                wp_idx = 0;
+
+                // Nếu chạm vạch ngang đích (có >= 11 mắt đen sau khi đã chạy > 3000 xung) -> Tự dừng và báo Web
+                if (sensor_is_crossline() && avg_ticks > 3000) {
+                    car_set_run_mode(CAR_MODE_STOP);
+                    ble_send_string("ACK:SCAN_FINISHED");
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+            } else {
+                // LƯỢT 2: Chạy đua bung tốc độ theo bảng Waypoint sa bàn
+                map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);
+            }
 
             s_active_speed = tgt_spd;
             s_active_action = act;
@@ -79,7 +96,7 @@ void bleTask(void *pvParameters) {
             int16_t ml = motor_get_left_speed();
             int16_t mr = motor_get_right_speed();
             uint8_t m_idx = map_get_selected();
-            uint8_t state = pid_is_auto_mode() ? 1 : 0;
+            uint8_t state = (uint8_t)car_get_run_mode();
 
             ble_send_telemetry(tl, tr, pos, ml, mr, m_idx, s_active_wp_idx, state);
         }
@@ -160,12 +177,14 @@ void loop() {
                 sensor_start_sweep_calibration(4000);
             } else {
                 // Đã calib -> Bật / Tắt chạy đua
-                bool new_mode = !pid_is_auto_mode();
-                if (new_mode) {
-                    encoder_reset();
+                CarRunMode_t cur = car_get_run_mode();
+                if (cur == CAR_MODE_STOP) {
+                    car_set_run_mode(CAR_MODE_RACE);
+                    Serial.println(">> [NÚT 35] BUNG TỐC ĐỘ ĐUA: BẬT <<");
+                } else {
+                    car_set_run_mode(CAR_MODE_STOP);
+                    Serial.println(">> [NÚT 35] DỪNG XE <<");
                 }
-                pid_set_auto_mode(new_mode);
-                Serial.printf(">> [NÚT 35] Chế độ chạy đua: %s <<\n", new_mode ? "BẬT (START)" : "DỪNG (STOP)");
             }
         }
     }
