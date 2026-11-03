@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CAR CHALLENGE 2026 - BLE F1 TELEMETRY</title>
+    <style>
+        :root {
+            --bg-dark: #0a0e17;
+            --card-bg: #131b2e;
+            --card-border: #1f2c4a;
+            --accent-cyan: #00f0ff;
+            --accent-green: #00ff66;
+            --accent-red: #ff3366;
+            --accent-yellow: #ffcc00;
+            --text-main: #e2e8f0;
+            --text-dim: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            padding: 12px;
+            padding-bottom: 30px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 12px;
+        }
+
+        .title-box h1 {
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+        }
+
+        .title-box p {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        .btn-ble {
+            background: linear-gradient(135deg, #0055ff, #00aaff);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 170, 255, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-ble.connected {
+            background: #1e293b;
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.3);
+        }
+
+        /* QUICK ACTION BUTTONS */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.3fr 1.3fr;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .btn-action {
+            border: none;
+            padding: 14px 8px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        .btn-action:active {
+            transform: scale(0.96);
+        }
+
+        .btn-calib {
+            background: #2a354d;
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #00aa44, #00ff66);
+            color: #05240f;
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.4);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #cc1133, #ff3366);
+            color: white;
+            box-shadow: 0 0 15px rgba(255, 51, 102, 0.4);
+        }
+
+        /* CARD CONTAINERS */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* MAP SELECTOR TABS */
+        .tab-group {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px 4px;
+            background: #182238;
+            border: 1px solid var(--card-border);
+            color: var(--text-dim);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            background: #1e3a5f;
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+        }
+
+        .lane-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #0f1624;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .switch-btn {
+            background: #24324f;
+            color: var(--text-main);
+            border: 1px solid var(--card-border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .switch-btn.active-right {
+            background: #8b5cf6;
+            color: white;
+            border-color: #a78bfa;
+        }
+
+        /* TELEMETRY METRICS */
+        .gauge-container {
+            margin: 10px 0 14px 0;
+        }
+
+        .gauge-bar-wrapper {
+            position: relative;
+            height: 24px;
+            background: #0a0f1d;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .gauge-center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateX(-50%);
+        }
+
+        .gauge-indicator {
+            position: absolute;
+            top: 3px;
+            bottom: 3px;
+            left: 50%;
+            width: 18px;
+            background: var(--accent-cyan);
+            border-radius: 9px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 10px var(--accent-cyan);
+            transition: left 0.05s linear;
+        }
+
+        .tele-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            text-align: center;
+        }
+
+        .tele-box {
+            background: #0f1624;
+            padding: 8px 4px;
+            border-radius: 8px;
+            border: 1px solid #1a253d;
+        }
+
+        .tele-label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .tele-val {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 2px;
+            font-family: monospace;
+        }
+
+        /* WAYPOINT TABLE */
+        .table-responsive {
+            overflow-x: auto;
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+        }
+
+        th {
+            background: #0f1624;
+            color: var(--text-dim);
+            padding: 6px 4px;
+            text-align: center;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        td {
+            padding: 6px 4px;
+            text-align: center;
+            border-bottom: 1px solid #1a253d;
+        }
+
+        input.table-input {
+            width: 100%;
+            background: #0a0f1d;
+            border: 1px solid #24324f;
+            color: var(--text-main);
+            border-radius: 4px;
+            padding: 4px;
+            font-size: 0.8rem;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        select.table-select {
+            width: 100%;
+            background: #0a0f1d;
+            border: 1px solid #24324f;
+            color: var(--text-main);
+            border-radius: 4px;
+            padding: 4px;
+            font-size: 0.75rem;
+        }
+
+        .table-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .table-actions-full {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        .btn-sub {
+            background: #182238;
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 8px 6px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-sub.primary {
+            background: #0284c7;
+            color: white;
+            border-color: #38bdf8;
+        }
+
+        .btn-sub.success {
+            background: #15803d;
+            color: white;
+            border-color: #4ade80;
+        }
+
+        .btn-sub.warning {
+            background: #b45309;
+            color: white;
+            border-color: #fde047;
+        }
+
+        .log-box {
+            background: #050811;
+            border: 1px solid #1a253d;
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            font-family: monospace;
+            color: #38bdf8;
+            max-height: 80px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-box">
+            <h1>🏁 RACECAR 16-SEN</h1>
+            <p>PTIT CAR CHALLENGE 2026</p>
+        </div>
+        <button id="btnConnect" class="btn-ble" onclick="toggleConnect()">
+            <span id="bleIcon">⚡</span>
+            <span id="bleText">KẾT NỐI BLE</span>
+        </button>
+    </header>
+
+    <!-- NÚT ĐIỀU KHIỂN NHANH -->
+    <div class="action-grid">
+        <button class="btn-action btn-calib" onclick="sendCmd('CMD:CALIB')">
+            <span>🌀</span>
+            <span>CALIB 4S</span>
+        </button>
+        <button class="btn-action btn-start" onclick="sendCmd('CMD:START')">
+            <span>🚀</span>
+            <span>XUẤT PHÁT</span>
+        </button>
+        <button class="btn-action btn-stop" onclick="sendCmd('CMD:STOP')">
+            <span>🛑</span>
+            <span>DỪNG PHANH</span>
+        </button>
+    </div>
+
+    <!-- KHU VỰC CHỌN MAP & LÀN -->
+    <div class="card">
+        <div class="card-header">
+            <span>CHỌN SA BÀN THI ĐẤU</span>
+            <span id="statusLane" style="color: var(--accent-cyan);">LÀN TRÁI</span>
+        </div>
+        <div class="tab-group">
+            <button class="tab-btn active" id="tab0" onclick="selectMap(0)">MAP 1</button>
+            <button class="tab-btn" id="tab1" onclick="selectMap(1)">MAP 2</button>
+            <button class="tab-btn" id="tab2" onclick="selectMap(2)">MAP 3</button>
+        </div>
+        <div class="lane-toggle">
+            <span>Đổi làn xuất phát đối xứng:</span>
+            <button id="btnLane" class="switch-btn" onclick="toggleLane()">LÀN TRÁI</button>
+        </div>
+    </div>
+
+    <!-- TELEMETRY THỜI GIAN THỰC -->
+    <div class="card">
+        <div class="card-header">
+            <span>GIÁM SÁT THỜI GIAN THỰC</span>
+            <span id="wpStatus" style="color: var(--accent-yellow);">SECTOR 0</span>
+        </div>
+
+        <div class="gauge-container">
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim); margin-bottom: 4px;">
+                <span>TRÁI (-75)</span>
+                <span id="posText" style="font-weight: 800; color: var(--accent-cyan);">TÂM: 0.0</span>
+                <span>PHẢI (+75)</span>
+            </div>
+            <div class="gauge-bar-wrapper">
+                <div class="gauge-center-line"></div>
+                <div id="gaugeIndicator" class="gauge-indicator"></div>
+            </div>
+        </div>
+
+        <div class="tele-grid">
+            <div class="tele-box">
+                <div class="tele-label">Xung Trái</div>
+                <div id="valTicksL" class="tele-val">0</div>
+            </div>
+            <div class="tele-box">
+                <div class="tele-label">Xung Phải</div>
+                <div id="valTicksR" class="tele-val">0</div>
+            </div>
+            <div class="tele-box">
+                <div class="tele-label">PWM L</div>
+                <div id="valPwmL" class="tele-val">0</div>
+            </div>
+            <div class="tele-box">
+                <div class="tele-label">PWM R</div>
+                <div id="valPwmR" class="tele-val">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BẢNG QUẢN LÝ MỐC SA BÀN (WAYPOINTS) -->
+    <div class="card">
+        <div class="card-header">
+            <span id="mapTitle">CẤU HÌNH MỐC XUNG MAP 1</span>
+            <span id="wpCountBadge">6 MỐC</span>
+        </div>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 35px;">#</th>
+                        <th>Mốc Xung</th>
+                        <th style="width: 60px;">Tốc độ</th>
+                        <th>Hành động</th>
+                        <th style="width: 30px;">Xóa</th>
+                    </tr>
+                </thead>
+                <tbody id="wpTableBody">
+                    <!-- Các dòng mốc sa bàn sẽ được nạp động từ JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="table-actions">
+            <button class="btn-sub primary" onclick="addCurrentTicksRow()">📍 CHỤP MỐC HIỆN TẠI</button>
+            <button class="btn-sub" onclick="addNewRow()">➕ THÊM MỐC</button>
+        </div>
+        <div class="table-actions-full">
+            <button class="btn-sub success" onclick="uploadMapToCar()">📤 GỬI XUỐNG XE</button>
+            <button class="btn-sub warning" onclick="sendCmd('CMD:SAVE')">💾 LƯU FLASH NVS</button>
+        </div>
+        <div style="margin-top: 6px;">
+            <button class="btn-sub" style="width: 100%;" onclick="sendCmd('CMD:RESET_DEF')">🔄 KHÔI PHỤC MẶC ĐỊNH</button>
+        </div>
+    </div>
+
+    <!-- NHẬT KÝ THÔNG BÁO -->
+    <div class="card">
+        <div class="card-header">NHẬT KÝ LỆNH BLE</div>
+        <div id="logConsole" class="log-box">> Sẵn sàng kết nối Bluetooth Web BLE...</div>
+    </div>
+
+    <script>
+        // UUID chuẩn Nordic UART Service (NUS)
+        const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const NUS_RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Web gửi xuống xe (Write)
+        const NUS_TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Xe gửi lên Web (Notify)
+
+        let bleDevice = null;
+        let rxChar = null;
+        let txChar = null;
+
+        let currentSelectedMap = 0;
+        let isRightLane = false;
+        let lastTicksAvg = 0;
+
+        // Dữ liệu mặc định 3 map trên Web
+        const mapsData = [
+            // Map 1
+            [
+                { ticks: 1500, speed: 100, action: 0 },
+                { ticks: 2600, speed: 85,  action: 0 },
+                { ticks: 4800, speed: 110, action: 2 }, // Ép Phải (nhánh trong Lượn Sóng)
+                { ticks: 5500, speed: 120, action: 3 }, // Khóa thẳng nét đứt
+                { ticks: 7000, speed: 90,  action: 0 },
+                { ticks: 7800, speed: 60,  action: 4 }  // Phanh đích
+            ],
+            // Map 2
+            [
+                { ticks: 1400, speed: 100, action: 0 },
+                { ticks: 2500, speed: 85,  action: 0 },
+                { ticks: 4800, speed: 110, action: 1 }, // Ép Trái (nhánh ngoài Lượn Sóng)
+                { ticks: 5500, speed: 120, action: 3 },
+                { ticks: 7000, speed: 90,  action: 0 },
+                { ticks: 7800, speed: 60,  action: 4 }
+            ],
+            // Map 3
+            [
+                { ticks: 1600, speed: 95,  action: 2 }, // Qua 2 hình thoi
+                { ticks: 2700, speed: 85,  action: 0 },
+                { ticks: 4900, speed: 110, action: 1 }, // Ép Trái (nhánh ngoài Lượn Sóng)
+                { ticks: 5600, speed: 120, action: 3 },
+                { ticks: 7100, speed: 90,  action: 0 },
+                { ticks: 7900, speed: 60,  action: 4 }
+            ]
+        ];
+
+        function log(msg) {
+            const con = document.getElementById('logConsole');
+            con.innerHTML = `> ${msg}\n` + con.innerHTML;
+        }
+
+        // =====================================================================
+        // WEB BLUETOOTH API
+        // =====================================================================
+        async function toggleConnect() {
+            if (bleDevice && bleDevice.gatt.connected) {
+                bleDevice.gatt.disconnect();
+                return;
+            }
+
+            try {
+                log('Đang quét tìm thiết bị RACECAR_16SEN...');
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'RACECAR' }],
+                    optionalServices: [NUS_SERVICE_UUID]
+                });
+
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                log('Đang kết nối GATT Server...');
+                const server = await bleDevice.gatt.connect();
+
+                log('Đang lấy dịch vụ UART...');
+                const service = await server.getPrimaryService(NUS_SERVICE_UUID);
+
+                rxChar = await service.getCharacteristic(NUS_RX_UUID);
+                txChar = await service.getCharacteristic(NUS_TX_UUID);
+
+                await txChar.startNotifications();
+                txChar.addEventListener('characteristicvaluechanged', handleTelemetry);
+
+                onConnected();
+                log('✅ ĐÃ KẾT NỐI THÀNH CÔNG VỚI XE!');
+
+                // Yêu cầu lấy thông số Map hiện tại
+                setTimeout(() => sendCmd('CMD:GET_MAP:' + currentSelectedMap), 200);
+
+            } catch (err) {
+                log('❌ Lỗi kết nối BLE: ' + err);
+            }
+        }
+
+        function onConnected() {
+            const btn = document.getElementById('btnConnect');
+            btn.classList.add('connected');
+            document.getElementById('bleText').innerText = 'ĐÃ KẾT NỐI';
+        }
+
+        function onDisconnected() {
+            const btn = document.getElementById('btnConnect');
+            btn.classList.remove('connected');
+            document.getElementById('bleText').innerText = 'KẾT NỐI BLE';
+            log('⚠️ Đã ngắt kết nối với xe!');
+        }
+
+        async function sendCmd(cmdStr) {
+            if (!rxChar) {
+                log('⚠️ Chưa kết nối Bluetooth!');
+                return;
+            }
+            try {
+                const enc = new TextEncoder();
+                await rxChar.writeValueWithoutResponse(enc.encode(cmdStr));
+                log('📤 Gửi lệnh: ' + cmdStr);
+            } catch (e) {
+                log('❌ Lỗi gửi: ' + e);
+            }
+        }
+
+        // =====================================================================
+        // XỬ LÝ DỮ LIỆU TELEMETRY NHẬN TỪ ESP32
+        // =====================================================================
+        function handleTelemetry(event) {
+            const dec = new TextDecoder();
+            const text = dec.decode(event.target.value).trim();
+
+            if (text.startsWith('T:')) {
+                // Định dạng: T:ticks_L,ticks_R,pos*10,pwm_L,pwm_R,map,wp,state
+                const parts = text.substring(2).split(',');
+                if (parts.length >= 8) {
+                    const tl = parseInt(parts[0]);
+                    const tr = parseInt(parts[1]);
+                    const pos = parseFloat(parts[2]) / 10.0;
+                    const ml = parseInt(parts[3]);
+                    const mr = parseInt(parts[4]);
+                    const wp = parseInt(parts[6]);
+                    const state = parseInt(parts[7]);
+
+                    lastTicksAvg = Math.round((Math.abs(tl) + Math.abs(tr)) / 2);
+
+                    document.getElementById('valTicksL').innerText = tl;
+                    document.getElementById('valTicksR').innerText = tr;
+                    document.getElementById('valPwmL').innerText = ml;
+                    document.getElementById('valPwmR').innerText = mr;
+                    document.getElementById('posText').innerText = `VỊ TRÍ: ${pos.toFixed(1)}`;
+                    document.getElementById('wpStatus').innerText = `SECTOR ${wp} (${state ? 'ĐANG CHẠY' : 'DỪNG'})`;
+
+                    // Cập nhật vị trí thước ngắm (-75.0 -> 0% .. 0 -> 50% .. +75.0 -> 100%)
+                    const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
+                    document.getElementById('gaugeIndicator').style.left = `${pct}%`;
+                }
+            } else if (text.startsWith('ACK:')) {
+                log('📥 ' + text);
+            } else if (text.startsWith('WP:')) {
+                // Nhận cấu hình từ xe: WP:<map>,<idx>,<ticks>,<speed>,<action>
+                const p = text.substring(3).split(',');
+                if (p.length >= 5) {
+                    const m = parseInt(p[0]);
+                    const idx = parseInt(p[1]);
+                    const ticks = parseInt(p[2]);
+                    const spd = parseInt(p[3]);
+                    const act = parseInt(p[4]);
+
+                    if (m < 3) {
+                        mapsData[m][idx] = { ticks: ticks, speed: spd, action: act };
+                        if (m === currentSelectedMap) renderTable();
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // QUẢN LÝ GIAO DIỆN VÀ BẢNG WAYPOINT
+        // =====================================================================
+        function selectMap(idx) {
+            currentSelectedMap = idx;
+            document.querySelectorAll('.tab-btn').forEach((b, i) => {
+                b.classList.toggle('active', i === idx);
+            });
+            document.getElementById('mapTitle').innerText = `CẤU HÌNH MỐC XUNG MAP ${idx + 1}`;
+            renderTable();
+            sendCmd(`CMD:MAP:${idx}`);
+        }
+
+        function toggleLane() {
+            isRightLane = !isRightLane;
+            const btn = document.getElementById('btnLane');
+            const lbl = document.getElementById('statusLane');
+            btn.classList.toggle('active-right', isRightLane);
+            btn.innerText = isRightLane ? 'LÀN PHẢI (MIRROR)' : 'LÀN TRÁI';
+            lbl.innerText = isRightLane ? 'LÀN PHẢI (ĐỐI XỨNG)' : 'LÀN TRÁI';
+            sendCmd(`CMD:LANE:${isRightLane ? 1 : 0}`);
+        }
+
+        function renderTable() {
+            const tb = document.getElementById('wpTableBody');
+            tb.innerHTML = '';
+            const wps = mapsData[currentSelectedMap];
+            document.getElementById('wpCountBadge').innerText = `${wps.length} MỐC`;
+
+            wps.forEach((wp, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 700;">${i}</td>
+                    <td><input type="number" class="table-input" value="${wp.ticks}" onchange="updateWp(${i}, 'ticks', this.value)"></td>
+                    <td><input type="number" class="table-input" value="${wp.speed}" onchange="updateWp(${i}, 'speed', this.value)"></td>
+                    <td>
+                        <select class="table-select" onchange="updateWp(${i}, 'action', this.value)">
+                            <option value="0" ${wp.action === 0 ? 'selected' : ''}>Bình thường (PID)</option>
+                            <option value="1" ${wp.action === 1 ? 'selected' : ''}>Ép Trái (Lượn Sóng)</option>
+                            <option value="2" ${wp.action === 2 ? 'selected' : ''}>Ép Phải (Lượn Sóng)</option>
+                            <option value="3" ${wp.action === 3 ? 'selected' : ''}>Khóa Thẳng (Nét Đứt)</option>
+                            <option value="4" ${wp.action === 4 ? 'selected' : ''}>Phanh Dừng Đích</option>
+                        </select>
+                    </td>
+                    <td><button style="background: none; border: none; color: var(--accent-red); cursor: pointer; font-size: 0.9rem;" onclick="removeWp(${i})">✖</button></td>
+                `;
+                tb.appendChild(tr);
+            });
+        }
+
+        function updateWp(idx, field, val) {
+            mapsData[currentSelectedMap][idx][field] = parseInt(val);
+        }
+
+        function removeWp(idx) {
+            mapsData[currentSelectedMap].splice(idx, 1);
+            renderTable();
+        }
+
+        function addNewRow() {
+            const wps = mapsData[currentSelectedMap];
+            const lastTicks = wps.length > 0 ? wps[wps.length - 1].ticks + 1000 : 1000;
+            wps.push({ ticks: lastTicks, speed: 100, action: 0 });
+            renderTable();
+        }
+
+        function addCurrentTicksRow() {
+            const wps = mapsData[currentSelectedMap];
+            const snapTicks = lastTicksAvg > 0 ? lastTicksAvg : 1500;
+            wps.push({ ticks: snapTicks, speed: 95, action: 0 });
+            renderTable();
+            log(`📍 Đã chụp mốc xung hiện tại: ${snapTicks}`);
+        }
+
+        async function uploadMapToCar() {
+            const wps = mapsData[currentSelectedMap];
+            log(`Đang nạp ${wps.length} mốc xuống Map ${currentSelectedMap + 1}...`);
+            await sendCmd(`CMD:WP_CLEAR:${currentSelectedMap}`);
+
+            for (let i = 0; i < wps.length; i++) {
+                const w = wps[i];
+                await new Promise(r => setTimeout(r, 40));
+                await sendCmd(`CMD:WP_SET:${currentSelectedMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
+            }
+            log(`✅ Đã nạp thành công toàn bộ mốc Map ${currentSelectedMap + 1} xuống xe!`);
+        }
+
+        // Khởi tạo bảng ban đầu
+        renderTable();
+    </script>
+</body>
+</html>
