@@ -57,6 +57,20 @@ void controlTask(void *pvParameters) {
             int64_t ticks_r = encoder_get_ticks_R();
             uint32_t avg_ticks = (uint32_t)((labs(ticks_l) + labs(ticks_r)) / 2);
 
+            // =========================================================================
+            // TỰ ĐỘNG PHANH DỪNG KHI GẶP VẠCH ĐÍCH (>= 14 HOẶC 16 MẮT ĐEN)
+            // Điều kiện: Đã rời vạch xuất phát (> 1000 xung) để không dừng ngay khi đề-pa
+            // =========================================================================
+            uint8_t total_black = sensor_get_black_count();
+            if (total_black >= 14 && avg_ticks > 1000) {
+                motor_stop();
+                car_set_run_mode(CAR_MODE_STOP);
+                ble_send_string("ACK:FINISH_STOPPED");
+                Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phát hiện %d/16 mắt đen tại %u xung -> Phanh dừng xe an toàn!\n", total_black, avg_ticks);
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
             int16_t tgt_spd = 100;
             uint8_t act = 0;
             uint8_t wp_idx = 0;
@@ -66,14 +80,6 @@ void controlTask(void *pvParameters) {
                 tgt_spd = car_get_scan_speed();
                 act = ACTION_NORMAL;
                 wp_idx = 0;
-
-                // Nếu chạm vạch ngang đích (có >= 11 mắt đen sau khi đã chạy > 1500 xung) -> Tự dừng và báo Web
-                if (sensor_is_crossline() && avg_ticks > 1500) {
-                    car_set_run_mode(CAR_MODE_STOP);
-                    ble_send_string("ACK:SCAN_FINISHED");
-                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                    continue;
-                }
             } else {
                 // LƯỢT 2: Chạy đua bung tốc độ theo bảng Waypoint sa bàn
                 map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);

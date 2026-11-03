@@ -636,9 +636,9 @@
                     finishCalibUI();
                 } else if (raw === 'ACK:PID_UPDATED') {
                     onPIDUpdatedFeedback();
-                } else if (raw === 'ACK:SCAN_FINISHED') {
-                    log('🎉 Xe đã chạm đích! Dừng tại: ' + lastLiveTicks + ' xung');
-                    alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn!\nTổng xung: ' + lastLiveTicks + ' ticks.');
+                } else if (raw === 'ACK:SCAN_FINISHED' || raw === 'ACK:FINISH_STOPPED') {
+                    log('🏁 Xe đã chạm đích! Dừng tại: ' + lastLiveTicks + ' xung');
+                    alert('🏁 [VẠCH ĐÍCH] Xe phát hiện vạch ngang đích (>= 14 mắt đen)!\nTổng quãng đường: ' + lastLiveTicks + ' xung.\nXe đã phanh dừng an toàn.');
                 }
             }
         }
