@@ -18,7 +18,8 @@ static PID_Config_t pidConfig = {
     .Kd = 10.0f,
     .baseSpeed = 100,
     .maxSpeed = 220,
-    .minSpeed = -115
+    .minSpeed = -115,
+    .turnSpeed = 130
 };
 
 static bool autoMode = false;
@@ -71,6 +72,14 @@ void pid_set_tunings(float kp, float ki, float kd) {
 
 void pid_set_base_speed(int16_t speed) {
     pidConfig.baseSpeed = clamp_int16(speed, 0, 255);
+}
+
+void pid_set_turn_speed(int16_t speed) {
+    pidConfig.turnSpeed = clamp_int16(speed, 60, 220);
+}
+
+int16_t pid_get_turn_speed(void) {
+    return pidConfig.turnSpeed;
 }
 
 void pid_set_sector_action(uint8_t action) {
@@ -164,10 +173,26 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
     if (s_corner_latch == 1) return LINE_CASE_CORNER_LEFT;
     if (s_corner_latch == 2) return LINE_CASE_CORNER_RIGHT;
 
-    // Kiểm tra vạch ngang / ngã tư / vạch đích (từ 11 mắt đen trở lên)
+    // Kiểm tra vạch ngang / ngã tư / vạch đích / Diode (từ 10 mắt đen trở lên)
     uint16_t mask = sensor_get_line_bits();
     uint8_t totalBlack = __builtin_popcount(mask);
-    if (totalBlack >= 11) {
+    if (totalBlack >= 10) {
+        // NẾU MỐC SA BÀN ĐANG LÀ ÉP TRÁI (BẪY DIODE RẼ TRÁI / NGÃ 3 CHỮ T):
+        // CẢM BIẾN CHẠM VÀO VẠCH NGANG -> KÍCH HOẠT BẺ VUÔNG TRÁI NGAY!
+        if (s_sector_action == 1) {
+            s_corner_latch = 1;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_LEFT;
+        }
+        // NẾU MỐC SA BÀN ĐANG LÀ ÉP PHẢI (BẪY DIODE RẼ PHẢI / NGÃ 3 CHỮ T):
+        // CẢM BIẾN CHẠM VÀO VẠCH NGANG -> KÍCH HOẠT BẺ VUÔNG PHẢI NGAY!
+        if (s_sector_action == 2) {
+            s_corner_latch = 2;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_RIGHT;
+        }
+
+        // Mặc định: Ngã tư chữ thập -> Chạy thẳng vượt qua
         return LINE_CASE_CROSS_LINE;
     }
 
@@ -243,12 +268,14 @@ void pid_line_follow_step(void) {
             integralError = 0.0f;
             lastError = 0.0f;
         } else {
+            int16_t t_fwd = pidConfig.turnSpeed;
+            int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
             if (s_corner_latch == 1) {
                 // Xoay góc vuông Trái: Bánh trái giật lùi, bánh phải phóng tới
-                motor_set_speeds(-110, 135);
+                motor_set_speeds(t_rev, t_fwd);
             } else {
                 // Xoay góc vuông Phải: Bánh trái phóng tới, bánh phải giật lùi
-                motor_set_speeds(135, -110);
+                motor_set_speeds(t_fwd, t_rev);
             }
             return;
         }
@@ -261,12 +288,15 @@ void pid_line_follow_step(void) {
     // Xác định trạng thái
     currentCase = pid_detect_case(position, blackCount);
 
+    int16_t t_fwd = pidConfig.turnSpeed;
+    int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
+
     // Nếu vừa kích hoạt chốt cua góc vuông trong pid_detect_case -> Thực thi ngay
     if (s_corner_latch != 0) {
         if (s_corner_latch == 1) {
-            motor_set_speeds(-110, 135);
+            motor_set_speeds(t_rev, t_fwd);
         } else {
-            motor_set_speeds(135, -110);
+            motor_set_speeds(t_fwd, t_rev);
         }
         return;
     }
@@ -335,12 +365,12 @@ void pid_line_follow_step(void) {
         // CASE: GÓC VUÔNG 90 ĐỘ TRÁI / PHẢI
         // =====================================================================
         case LINE_CASE_CORNER_LEFT: {
-            motor_set_speeds(-110, 135);
+            motor_set_speeds(t_rev, t_fwd);
             break;
         }
 
         case LINE_CASE_CORNER_RIGHT: {
-            motor_set_speeds(135, -110);
+            motor_set_speeds(t_fwd, t_rev);
             break;
         }
 
@@ -358,15 +388,15 @@ void pid_line_follow_step(void) {
 
             // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối với lực mạnh
             if (lastKnownDirection < 0 || lastKnownPosition < -5.0f || lastError < -5.0f) {
-                motor_set_speeds(-110, 130); // Giật xoay mạnh tìm vạch bên trái
+                motor_set_speeds(t_rev, t_fwd); // Giật xoay mạnh tìm vạch bên trái
             } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f || lastError > 5.0f) {
-                motor_set_speeds(130, -110); // Giật xoay mạnh tìm vạch bên phải
+                motor_set_speeds(t_fwd, t_rev); // Giật xoay mạnh tìm vạch bên phải
             } else {
                 // Nếu hướng = 0 (trước đó đi thẳng), dùng lastKnownPosition để quyết định xoay
                 if (lastKnownPosition <= 0.0f) {
-                    motor_set_speeds(-105, 125);
+                    motor_set_speeds(t_rev, t_fwd);
                 } else {
-                    motor_set_speeds(125, -105);
+                    motor_set_speeds(t_fwd, t_rev);
                 }
             }
             break;

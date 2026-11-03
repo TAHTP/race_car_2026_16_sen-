@@ -9,6 +9,7 @@
 
 // Biến chia sẻ giữa 2 Core
 static volatile bool s_run_requested = false;
+static volatile float s_live_line_pos = 0.0f; // Vị trí tim line thời gian thực (luôn cập nhật 500Hz)
 static uint8_t s_active_wp_idx = 0;
 static uint8_t s_active_action = 0;
 static int16_t s_active_speed = 100;
@@ -48,6 +49,7 @@ void controlTask(void *pvParameters) {
         float cur_pos = 0.0f;
         uint8_t cur_black_cnt = 0;
         pid_calculate_position(&cur_pos, &cur_black_cnt);
+        s_live_line_pos = cur_pos; // CẬP NHẬT TỌA ĐỘ VẠCH REAL-TIME LIÊN TỤC 500HZ!
 
         // 2. Chế độ bám line tự động
         CarRunMode_t mode = car_get_run_mode();
@@ -56,20 +58,7 @@ void controlTask(void *pvParameters) {
             int64_t ticks_l = encoder_get_ticks_L();
             int64_t ticks_r = encoder_get_ticks_R();
             uint32_t avg_ticks = (uint32_t)((labs(ticks_l) + labs(ticks_r)) / 2);
-
-            // =========================================================================
-            // TỰ ĐỘNG PHANH DỪNG KHI GẶP VẠCH ĐÍCH (>= 14 HOẶC 16 MẮT ĐEN)
-            // Điều kiện: Đã rời vạch xuất phát (> 1000 xung) để không dừng ngay khi đề-pa
-            // =========================================================================
             uint8_t total_black = sensor_get_black_count();
-            if (total_black >= 14 && avg_ticks > 1000) {
-                motor_stop();
-                car_set_run_mode(CAR_MODE_STOP);
-                ble_send_string("ACK:FINISH_STOPPED");
-                Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phát hiện %d/16 mắt đen tại %u xung -> Phanh dừng xe an toàn!\n", total_black, avg_ticks);
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                continue;
-            }
 
             int16_t tgt_spd = 100;
             uint8_t act = 0;
@@ -80,9 +69,28 @@ void controlTask(void *pvParameters) {
                 tgt_spd = car_get_scan_speed();
                 act = ACTION_NORMAL;
                 wp_idx = 0;
+
+                // Nếu chạm vạch ngang đích (có >= 13 mắt đen sau khi đã chạy > 1500 xung) -> Tự dừng và báo Web
+                if (total_black >= 13 && avg_ticks > 1500) {
+                    motor_stop();
+                    car_set_run_mode(CAR_MODE_STOP);
+                    ble_send_string("ACK:SCAN_FINISHED");
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
             } else {
                 // LƯỢT 2: Chạy đua bung tốc độ theo bảng Waypoint sa bàn
                 map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);
+
+                // Chỉ dừng khi mốc sa bàn là ACTION_BRAKE_STOP hoặc chạm vạch ngang đích ở mốc cuối
+                if (act == ACTION_BRAKE_STOP || (total_black >= 13 && avg_ticks > 1000 && wp_idx >= map_get_waypoint_count(map_get_selected()) - 1)) {
+                    motor_stop();
+                    car_set_run_mode(CAR_MODE_STOP);
+                    ble_send_string("ACK:FINISH_STOPPED");
+                    Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phanh dừng tại mốc %u (%u xung)\n", wp_idx, avg_ticks);
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
             }
 
             s_active_speed = tgt_spd;
@@ -113,7 +121,7 @@ void bleTask(void *pvParameters) {
         if (ble_is_connected()) {
             int32_t tl = (int32_t)encoder_get_ticks_L();
             int32_t tr = (int32_t)encoder_get_ticks_R();
-            float pos = pid_get_last_error();
+            float pos = s_live_line_pos; // TRUYỀN TỌA ĐỘ REAL-TIME ĐỘNG (KỂ CẢ KHI DỪNG XE)
             int16_t ml = motor_get_left_speed();
             int16_t mr = motor_get_right_speed();
             uint8_t m_idx = map_get_selected();

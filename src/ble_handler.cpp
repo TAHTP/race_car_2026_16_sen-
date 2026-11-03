@@ -28,7 +28,7 @@ void car_set_run_mode(CarRunMode_t mode) {
         pid_set_auto_mode(false);
         motor_stop();
     } else {
-        encoder_reset();
+        // KHÔNG reset xung ở đây! Xung chỉ reset khi người dùng bấm nút CMD:RESET_ENC
         pid_set_auto_mode(true);
     }
 }
@@ -92,17 +92,22 @@ class RxCallbacks : public BLECharacteristicCallbacks {
             ble_send_string("ACK:ENC_RESET");
         }
         else if (rxValue.startsWith("CMD:PID:")) {
-            // Cú pháp: CMD:PID:<kp>:<ki>:<kd>:<spd>
+            // Cú pháp: CMD:PID:<kp>:<ki>:<kd>:<spd>[:<turn>]
             int p1 = rxValue.indexOf(':', 8);
             int p2 = rxValue.indexOf(':', p1 + 1);
             int p3 = rxValue.indexOf(':', p2 + 1);
+            int p4 = rxValue.indexOf(':', p3 + 1);
             if (p1 > 0 && p2 > 0 && p3 > 0) {
                 float kp = rxValue.substring(8, p1).toFloat();
                 float ki = rxValue.substring(p1 + 1, p2).toFloat();
                 float kd = rxValue.substring(p2 + 1, p3).toFloat();
-                int16_t spd = rxValue.substring(p3 + 1).toInt();
+                int16_t spd = (p4 > 0) ? rxValue.substring(p3 + 1, p4).toInt() : rxValue.substring(p3 + 1).toInt();
                 pid_set_tunings(kp, ki, kd);
                 pid_set_base_speed(spd);
+                if (p4 > 0) {
+                    int16_t turn = rxValue.substring(p4 + 1).toInt();
+                    pid_set_turn_speed(turn);
+                }
                 ble_send_string("ACK:PID_UPDATED");
             }
         }
