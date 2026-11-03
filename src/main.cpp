@@ -26,6 +26,9 @@ void controlTask(void *pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(2); // 2ms = 500Hz chuẩn thi đấu
 
     for (;;) {
+        // LUÔN CẬP NHẬT ENCODER ĐỊNH KỲ (2ms) - DÙ XE ĐANG CHẠY HAY ĐỨNG YÊN!
+        encoder_update(0.002f);
+
         // 1. Quá trình Calib cảm biến
         static bool was_calibrating = false;
         if (sensor_is_calibrating()) {
@@ -39,6 +42,12 @@ void controlTask(void *pvParameters) {
             ble_send_string("ACK:CALIB_DONE");
             Serial.println(">> ✅ [CALIB XONG] Đã lưu ngưỡng và sẵn sàng!");
         }
+
+        // LUÔN ĐỌC VÀ TÍNH TOÁN CẢM BIẾN REAL-TIME - KỂ CẢ KHI XE ĐANG ĐỨNG YÊN!
+        // Giúp Web luôn nhận diện 16 mắt bật/tắt và thước ngắm tọa độ sống động
+        float cur_pos = 0.0f;
+        uint8_t cur_black_cnt = 0;
+        pid_calculate_position(&cur_pos, &cur_black_cnt);
 
         // 2. Chế độ bám line tự động
         CarRunMode_t mode = car_get_run_mode();
@@ -58,8 +67,8 @@ void controlTask(void *pvParameters) {
                 act = ACTION_NORMAL;
                 wp_idx = 0;
 
-                // Nếu chạm vạch ngang đích (có >= 11 mắt đen sau khi đã chạy > 3000 xung) -> Tự dừng và báo Web
-                if (sensor_is_crossline() && avg_ticks > 3000) {
+                // Nếu chạm vạch ngang đích (có >= 11 mắt đen sau khi đã chạy > 1500 xung) -> Tự dừng và báo Web
+                if (sensor_is_crossline() && avg_ticks > 1500) {
                     car_set_run_mode(CAR_MODE_STOP);
                     ble_send_string("ACK:SCAN_FINISHED");
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -81,7 +90,7 @@ void controlTask(void *pvParameters) {
             // Thực thi 1 bước PID
             pid_line_follow_step();
         } else {
-            // Không chạy -> Dừng động cơ
+            // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
             motor_stop();
         }
 

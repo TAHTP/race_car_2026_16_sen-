@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CAR CHALLENGE 2026 - BLE F1 TELEMETRY</title>
+    <title>CAR CHALLENGE 2026 - TELEMETRY & TUNING</title>
     <style>
         :root {
-            --bg-dark: #0a0e17;
-            --card-bg: #131b2e;
-            --card-border: #1f2c4a;
+            --bg-dark: #090d16;
+            --card-bg: #121826;
+            --card-border: #1e293b;
             --accent-cyan: #00f0ff;
-            --accent-green: #00ff66;
-            --accent-red: #ff3366;
-            --accent-yellow: #ffcc00;
-            --text-main: #e2e8f0;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --text-main: #f1f5f9;
             --text-dim: #94a3b8;
         }
 
@@ -21,201 +21,164 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
 
         body {
             background-color: var(--bg-dark);
             color: var(--text-main);
-            padding: 12px;
-            padding-bottom: 30px;
+            padding: 10px;
+            padding-bottom: 40px;
         }
 
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 12px;
+            padding: 8px 4px 12px 4px;
             border-bottom: 1px solid var(--card-border);
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
         .title-box h1 {
             font-size: 1.1rem;
             font-weight: 800;
-            letter-spacing: 0.5px;
             color: var(--accent-cyan);
-            text-transform: uppercase;
-        }
-
-        .title-box p {
-            font-size: 0.72rem;
-            color: var(--text-dim);
+            letter-spacing: 0.5px;
         }
 
         .btn-ble {
-            background: linear-gradient(135deg, #0055ff, #00aaff);
-            color: white;
+            background: linear-gradient(135deg, #0284c7, #00f0ff);
+            color: #031320;
             border: none;
             padding: 8px 14px;
-            font-size: 0.85rem;
-            font-weight: 700;
+            font-size: 0.82rem;
+            font-weight: 800;
             border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 0 10px rgba(0, 170, 255, 0.4);
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
         }
 
         .btn-ble.connected {
             background: #1e293b;
             color: var(--accent-green);
             border: 1px solid var(--accent-green);
-            box-shadow: 0 0 10px rgba(0, 255, 102, 0.3);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
         }
 
-        /* QUICK ACTION BUTTONS */
-        .action-grid {
+        /* KHỐI NÚT ĐIỀU KHIỂN CHÍNH */
+        .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
-        .btn-action {
+        .btn-main {
             border: none;
             padding: 12px 6px;
             border-radius: 10px;
             font-size: 0.88rem;
             font-weight: 800;
-            text-transform: uppercase;
             cursor: pointer;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 4px;
-            transition: transform 0.1s, opacity 0.2s;
+            transition: transform 0.08s;
         }
 
-        .btn-action:active {
+        .btn-main:active {
             transform: scale(0.96);
         }
 
         .btn-calib {
-            background: #2a354d;
+            background: #1e293b;
             color: var(--accent-yellow);
             border: 1px solid var(--accent-yellow);
         }
 
+        .btn-stop {
+            background: linear-gradient(135deg, #b91c1c, #ef4444);
+            color: white;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+        }
+
         .btn-scan {
-            background: linear-gradient(135deg, #0284c7, #38bdf8);
-            color: #042f2e;
-            box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+            background: linear-gradient(135deg, #0369a1, #0284c7);
+            color: white;
+            box-shadow: 0 0 12px rgba(2, 132, 199, 0.4);
         }
 
         .btn-race {
-            background: linear-gradient(135deg, #059669, #10b981);
-            color: #ffffff;
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
-        }
-
-        .btn-stop {
-            background: linear-gradient(135deg, #cc1133, #ff3366);
+            background: linear-gradient(135deg, #047857, #10b981);
             color: white;
-            box-shadow: 0 0 15px rgba(255, 51, 102, 0.4);
+            box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
         }
 
-        /* CARD CONTAINERS */
+        /* CARD */
         .card {
             background-color: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 12px;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 10px;
         }
 
-        .card-header {
+        .card-title {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
-            font-size: 0.8rem;
-            font-weight: 700;
+            font-size: 0.75rem;
+            font-weight: 800;
             color: var(--text-dim);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            margin-bottom: 8px;
         }
 
-        /* MAP SELECTOR TABS */
-        .tab-group {
-            display: flex;
-            gap: 6px;
-            margin-bottom: 10px;
+        /* 16 MẮT CẢM BIẾN */
+        .sensor-row {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            margin: 6px 0;
         }
 
-        .tab-btn {
-            flex: 1;
-            padding: 10px 4px;
-            background: #182238;
-            border: 1px solid var(--card-border);
-            color: var(--text-dim);
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .tab-btn.active {
-            background: #1e3a5f;
-            border-color: var(--accent-cyan);
-            color: var(--accent-cyan);
-            box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
-        }
-
-        .lane-toggle {
+        .sensor-box {
+            height: 26px;
+            background: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 3px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            background: #0f1624;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
+            justify-content: center;
+            font-size: 0.55rem;
+            font-weight: 800;
+            color: #475569;
+            transition: background 0.05s, box-shadow 0.05s;
         }
 
-        .switch-btn {
-            background: #24324f;
-            color: var(--text-main);
-            border: 1px solid var(--card-border);
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-weight: 700;
-            cursor: pointer;
+        .sensor-box.active {
+            background: var(--accent-cyan);
+            color: #000;
+            border-color: #fff;
+            box-shadow: 0 0 8px var(--accent-cyan);
         }
 
-        .switch-btn.active-right {
-            background: #8b5cf6;
-            color: white;
-            border-color: #a78bfa;
-        }
-
-        /* TELEMETRY METRICS */
-        .gauge-container {
-            margin: 6px 0 12px 0;
-        }
-
-        .gauge-bar-wrapper {
+        /* THƯỚC NGẮM */
+        .gauge-wrapper {
             position: relative;
-            height: 22px;
-            background: #0a0f1d;
+            height: 20px;
+            background: #090d16;
             border: 1px solid var(--card-border);
-            border-radius: 11px;
+            border-radius: 10px;
             overflow: hidden;
+            margin-top: 6px;
         }
 
-        .gauge-center-line {
+        .gauge-center {
             position: absolute;
             left: 50%;
             top: 0;
@@ -225,130 +188,80 @@
             transform: translateX(-50%);
         }
 
-        .gauge-indicator {
+        .gauge-dot {
             position: absolute;
             top: 2px;
             bottom: 2px;
             left: 50%;
-            width: 18px;
+            width: 16px;
             background: var(--accent-cyan);
-            border-radius: 9px;
+            border-radius: 8px;
             transform: translateX(-50%);
-            box-shadow: 0 0 10px var(--accent-cyan);
-            transition: left 0.05s linear;
+            box-shadow: 0 0 8px var(--accent-cyan);
+            transition: left 0.04s linear;
         }
 
-        /* 16 MẮT CẢM BIẾN */
-        .sensor-cell {
-            background: #1e293b;
-            color: #64748b;
-            font-size: 0.6rem;
-            font-weight: 800;
-            height: 28px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #334155;
-            transition: background 0.05s, box-shadow 0.05s;
-        }
-
-        .tele-grid {
+        /* METRICS */
+        .metrics-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
+            gap: 6px;
             text-align: center;
-            margin-top: 10px;
+            margin-top: 8px;
         }
 
-        .tele-box {
-            background: #0f1624;
-            padding: 8px 4px;
-            border-radius: 8px;
-            border: 1px solid #1a253d;
+        .metric-cell {
+            background: #090d16;
+            border: 1px solid var(--card-border);
+            padding: 6px 2px;
+            border-radius: 6px;
         }
 
-        .tele-label {
-            font-size: 0.65rem;
+        .metric-label {
+            font-size: 0.62rem;
             color: var(--text-dim);
             text-transform: uppercase;
         }
 
-        .tele-val {
+        .metric-value {
             font-size: 0.95rem;
             font-weight: 800;
+            font-family: monospace;
             color: var(--text-main);
             margin-top: 2px;
-            font-family: monospace;
         }
 
-        /* WAYPOINT TABLE */
-        .table-responsive {
-            overflow-x: auto;
-            margin-bottom: 10px;
+        /* INPUT / BUTTON FORM */
+        .form-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-bottom: 6px;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.78rem;
-        }
-
-        th {
-            background: #0f1624;
-            color: var(--text-dim);
-            padding: 6px 4px;
-            text-align: center;
-            border-bottom: 1px solid var(--card-border);
-        }
-
-        td {
-            padding: 6px 4px;
-            text-align: center;
-            border-bottom: 1px solid #1a253d;
-        }
-
-        input.table-input {
-            width: 100%;
-            background: #0a0f1d;
-            border: 1px solid #24324f;
-            color: var(--text-main);
-            border-radius: 4px;
-            padding: 4px;
-            font-size: 0.8rem;
-            text-align: center;
-            font-family: monospace;
-        }
-
-        select.table-select {
-            width: 100%;
-            background: #0a0f1d;
-            border: 1px solid #24324f;
-            color: var(--text-main);
-            border-radius: 4px;
-            padding: 4px;
+        .form-row label {
+            width: 80px;
             font-size: 0.75rem;
+            color: var(--text-dim);
         }
 
-        .table-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-top: 10px;
-        }
-
-        .table-actions-full {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-top: 6px;
+        .form-input {
+            flex: 1;
+            background: #090d16;
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: monospace;
+            text-align: center;
         }
 
         .btn-sub {
-            background: #182238;
-            border: 1px solid var(--card-border);
+            background: #1e293b;
+            border: 1px solid #334155;
             color: var(--text-main);
-            padding: 8px 6px;
+            padding: 8px 10px;
             border-radius: 6px;
             font-size: 0.78rem;
             font-weight: 700;
@@ -357,274 +270,264 @@
 
         .btn-sub.primary {
             background: #0284c7;
+            border-color: var(--accent-cyan);
             color: white;
-            border-color: #38bdf8;
         }
 
         .btn-sub.success {
-            background: #15803d;
+            background: #059669;
+            border-color: #34d399;
             color: white;
-            border-color: #4ade80;
         }
 
-        .btn-sub.warning {
-            background: #b45309;
+        .btn-sub.danger {
+            background: #991b1b;
+            border-color: #f87171;
             color: white;
-            border-color: #fde047;
         }
 
-        .log-box {
-            background: #050811;
-            border: 1px solid #1a253d;
-            border-radius: 8px;
-            padding: 6px 8px;
-            font-size: 0.7rem;
-            font-family: monospace;
-            color: #38bdf8;
-            max-height: 80px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+        /* TABLE */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+            margin-top: 6px;
+        }
+
+        th {
+            background: #090d16;
+            color: var(--text-dim);
+            padding: 5px;
+            text-align: center;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        td {
+            padding: 5px;
+            text-align: center;
+            border-bottom: 1px solid #1a2336;
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: #090d16;
+            border: 1px solid var(--card-border);
+            color: var(--text-dim);
+            padding: 6px 2px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            background: #0284c7;
+            border-color: var(--accent-cyan);
+            color: white;
         }
     </style>
 </head>
 <body>
 
-    <!-- MODAL CALIBRATION POPUP -->
+    <!-- MODAL CALIBRATION -->
     <div id="calibModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center;">
-        <div style="background: #131b2e; border: 2px solid #00f0ff; border-radius: 16px; padding: 24px; max-width: 340px; width: 100%; box-shadow: 0 0 30px rgba(0,240,255,0.4);">
-            <div id="calibIcon" style="font-size: 3rem; margin-bottom: 10px;">🌀</div>
-            <h2 id="calibTitle" style="color: #00f0ff; font-size: 1.2rem; margin-bottom: 8px;">ĐANG CALIB QUÉT VẠCH</h2>
-            <p id="calibDesc" style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 16px;">Hãy lia đầu xe qua lại vạch đen liên tục trong 4 giây!</p>
-            <div style="height: 12px; background: #0a0f1d; border-radius: 6px; overflow: hidden; margin-bottom: 12px;">
-                <div id="calibProgress" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00f0ff, #00ff66); transition: width 0.1s linear;"></div>
+        <div style="background: #121826; border: 2px solid var(--accent-cyan); border-radius: 14px; padding: 20px; max-width: 320px; width: 100%;">
+            <div id="calibIcon" style="font-size: 2.8rem; margin-bottom: 6px;">🌀</div>
+            <h3 id="calibTitle" style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 6px;">ĐANG CALIB QUÉT 4S</h3>
+            <p id="calibDesc" style="color: var(--text-dim); font-size: 0.8rem; margin-bottom: 14px;">Lia đầu xe qua lại vạch đen liên tục!</p>
+            <div style="height: 10px; background: #090d16; border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
+                <div id="calibProgress" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));"></div>
             </div>
-            <div id="calibTimer" style="font-size: 1.5rem; font-weight: 800; color: #ffcc00;">4.0s</div>
-            <button id="calibCloseBtn" style="display: none; margin-top: 16px; background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; width: 100%; cursor: pointer;" onclick="closeCalibModal()">ĐÃ SẴN SÀNG!</button>
+            <div id="calibTimer" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-yellow);">4.0s</div>
+            <button id="calibCloseBtn" style="display: none; margin-top: 14px; background: var(--accent-green); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; width: 100%; cursor: pointer;" onclick="closeCalibModal()">ĐÃ SẴN SÀNG!</button>
         </div>
     </div>
 
     <header>
         <div class="title-box">
-            <h1>🏁 RACECAR 16-SEN</h1>
-            <p>PTIT CAR CHALLENGE 2026</p>
+            <h1>RACECAR 16-SEN</h1>
         </div>
         <button id="btnConnect" class="btn-ble" onclick="toggleConnect()">
-            <span id="bleIcon">⚡</span>
-            <span id="bleText">KẾT NỐI BLE</span>
+            <span id="bleText">⚡ KẾT NỐI BLE</span>
         </button>
     </header>
 
-    <!-- NÚT ĐIỀU KHIỂN NHANH -->
-    <div class="action-grid">
-        <button class="btn-action btn-calib" onclick="startCalibUI()">
-            <span>🌀</span>
-            <span>CALIB 4S</span>
+    <!-- KHỐI 4 NÚT ĐIỀU KHIỂN CHÍNH -->
+    <div class="grid-2">
+        <button class="btn-main btn-calib" onclick="startCalib()">
+            <span>🌀 CALIB 4S</span>
         </button>
-        <button class="btn-action btn-stop" onclick="sendCmd('CMD:STOP')">
-            <span>🛑</span>
-            <span>DỪNG PHANH GẤP</span>
+        <button class="btn-main btn-stop" onclick="sendCmd('CMD:STOP')">
+            <span>🛑 DỪNG XE</span>
         </button>
-        <button class="btn-action btn-scan" onclick="sendCmd('CMD:SCAN')">
-            <span>🐢</span>
-            <span>LƯỢT 1: QUÉT MAP CHẬM</span>
+        <button class="btn-main btn-scan" onclick="sendCmd('CMD:SCAN')">
+            <span>🐢 LƯỢT 1: QUÉT MAP</span>
         </button>
-        <button class="btn-action btn-race" onclick="sendCmd('CMD:RACE')">
-            <span>🚀</span>
-            <span>LƯỢT 2: BUNG TỐC ĐỘ ĐUA</span>
+        <button class="btn-main btn-race" onclick="sendCmd('CMD:RACE')">
+            <span>🚀 LƯỢT 2: BUNG TỐC ĐỘ</span>
         </button>
     </div>
 
-    <!-- ĐIỀU CHỈNH TỐC ĐỘ DÒ SA BÀN (LƯỢT 1) -->
-    <div class="card" style="padding: 10px 12px;">
-        <div class="card-header" style="margin-bottom: 6px;">
-            <span>🐢 TỐC ĐỘ DÒ SA BÀN (LƯỢT 1)</span>
-            <span id="scanSpdVal" style="color: var(--accent-cyan); font-weight: 800;">110 PWM</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <button class="switch-btn" onclick="adjustScanSpeed(-10)" style="padding: 6px 12px;">-10</button>
-            <input type="range" id="sliderScanSpd" min="60" max="180" step="5" value="110" style="flex: 1; accent-color: var(--accent-cyan);" oninput="onScanSpeedChange(this.value)">
-            <button class="switch-btn" onclick="adjustScanSpeed(10)" style="padding: 6px 12px;">+10</button>
-        </div>
-    </div>
-
-    <!-- KHU VỰC CHỌN MAP & LÀN -->
+    <!-- 16 MẮT CẢM BIẾN REAL-TIME -->
     <div class="card">
-        <div class="card-header">
-            <span>CHỌN SA BÀN THI ĐẤU</span>
-            <span id="statusLane" style="color: var(--accent-cyan);">LÀN TRÁI</span>
+        <div class="card-title">
+            <span>16 MẮT CẢM BIẾN (REALTIME)</span>
+            <span id="blackCountBadge" style="color: var(--accent-green);">0/16 ĐEN</span>
         </div>
-        <div class="tab-group">
-            <button class="tab-btn active" id="tab0" onclick="selectMap(0)">MAP 1</button>
-            <button class="tab-btn" id="tab1" onclick="selectMap(1)">MAP 2</button>
-            <button class="tab-btn" id="tab2" onclick="selectMap(2)">MAP 3</button>
+
+        <div class="sensor-row" id="sensorRow">
+            <!-- 16 ô mắt tạo tự động -->
         </div>
-        <div class="lane-toggle">
-            <span>Đổi làn xuất phát đối xứng:</span>
-            <button id="btnLane" class="switch-btn" onclick="toggleLane()">LÀN TRÁI</button>
+
+        <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-dim); margin-top: 4px;">
+            <span>MẮT 0 (TRÁI)</span>
+            <span id="posValue" style="color: var(--accent-cyan); font-weight: 800;">TÂM: 0.0</span>
+            <span>MẮT 15 (PHẢI)</span>
+        </div>
+
+        <div class="gauge-wrapper">
+            <div class="gauge-center"></div>
+            <div id="gaugeDot" class="gauge-dot"></div>
         </div>
     </div>
 
-    <!-- TELEMETRY THỜI GIAN THỰC -->
+    <!-- THÔNG SỐ XUNG & VẬN TỐC (KHÔNG BỊ RESET KHI DỪNG) -->
     <div class="card">
-        <div class="card-header">
-            <span>GIÁM SÁT THỜI GIAN THỰC</span>
-            <span id="wpStatus" style="color: var(--accent-yellow);">SECTOR 0</span>
+        <div class="card-title">
+            <span>THÔNG SỐ XE (ENCODER & ĐỘNG CƠ)</span>
+            <span id="carStateBadge" style="color: var(--accent-yellow);">STOPPED</span>
         </div>
 
-        <div class="gauge-container">
-            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim); margin-bottom: 4px;">
-                <span>TRÁI (-75)</span>
-                <span id="posText" style="font-weight: 800; color: var(--accent-cyan);">TÂM: 0.0</span>
-                <span>PHẢI (+75)</span>
+        <div class="metrics-grid">
+            <div class="metric-cell">
+                <div class="metric-label">Xung Trái</div>
+                <div id="txtTicksL" class="metric-value">0</div>
             </div>
-            <div class="gauge-bar-wrapper">
-                <div class="gauge-center-line"></div>
-                <div id="gaugeIndicator" class="gauge-indicator"></div>
+            <div class="metric-cell">
+                <div class="metric-label">Xung Phải</div>
+                <div id="txtTicksR" class="metric-value">0</div>
             </div>
-        </div>
-
-        <!-- THANH 16 MẮT CẢM BIẾN TRỰC QUAN -->
-        <div style="margin-top: 8px; background: #0a0f1d; padding: 8px; border-radius: 8px; border: 1px solid #1a253d;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-bottom: 6px;">
-                <span>16 MẮT CẢM BIẾN (0..15):</span>
-                <span id="blackCountText" style="color: #00ff66; font-weight: 700;">0/16 MẮT ĐEN</span>
+            <div class="metric-cell">
+                <div class="metric-label">PWM L</div>
+                <div id="txtPwmL" class="metric-value">0</div>
             </div>
-            <div id="sensorGrid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px;">
-                <!-- 16 ô vuông được tạo tự động bởi JS -->
+            <div class="metric-cell">
+                <div class="metric-label">PWM R</div>
+                <div id="txtPwmR" class="metric-value">0</div>
             </div>
         </div>
 
-        <div class="tele-grid">
-            <div class="tele-box">
-                <div class="tele-label">Xung Trái</div>
-                <div id="valTicksL" class="tele-val">0</div>
-            </div>
-            <div class="tele-box">
-                <div class="tele-label">Xung Phải</div>
-                <div id="valTicksR" class="tele-val">0</div>
-            </div>
-            <div class="tele-box">
-                <div class="tele-label">PWM L</div>
-                <div id="valPwmL" class="tele-val">0</div>
-            </div>
-            <div class="tele-box">
-                <div class="tele-label">PWM R</div>
-                <div id="valPwmR" class="tele-val">0</div>
-            </div>
+        <div style="margin-top: 8px; display: flex; gap: 6px;">
+            <button class="btn-sub" style="flex: 1;" onclick="sendCmd('CMD:RESET_ENC')">🔄 RESET XUNG VỀ 0</button>
+            <button class="btn-sub primary" style="flex: 1;" onclick="captureCurrentTicks()">📍 CHỤP MỐC NÀY</button>
         </div>
     </div>
 
-    <!-- BẢNG QUẢN LÝ MỐC SA BÀN (WAYPOINTS) -->
+    <!-- CẤU HÌNH THÔNG SỐ PID TRỰC TIẾP TRÊN WEB -->
     <div class="card">
-        <div class="card-header">
-            <span id="mapTitle">CẤU HÌNH MỐC XUNG MAP 1</span>
-            <span id="wpCountBadge">6 MỐC</span>
+        <div class="card-title">
+            <span>CHỈNH PID & TỐC ĐỘ</span>
         </div>
 
-        <div class="table-responsive">
+        <div class="form-row">
+            <label>Kp (Tỉ lệ):</label>
+            <input type="number" step="0.1" id="cfgKp" class="form-input" value="2.2">
+            <label style="margin-left: 6px;">Kd (Vi phân):</label>
+            <input type="number" step="0.5" id="cfgKd" class="form-input" value="10.0">
+        </div>
+
+        <div class="form-row">
+            <label>Ki (Tích phân):</label>
+            <input type="number" step="0.01" id="cfgKi" class="form-input" value="0.0">
+            <label style="margin-left: 6px;">Tốc độ nền:</label>
+            <input type="number" step="5" id="cfgSpeed" class="form-input" value="110">
+        </div>
+
+        <div class="form-row" style="margin-top: 8px;">
+            <button class="btn-sub success" style="width: 100%;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
+        </div>
+    </div>
+
+    <!-- BẢNG MỐC SA BÀN (TRỐNG BAN ĐẦU - CHỈ CHỤP KHI CẦN) -->
+    <div class="card">
+        <div class="card-title">
+            <span>MỐC SA BÀN (TỰ CHỤP MỐC THẬT)</span>
+            <span id="wpTotalBadge">0 MỐC</span>
+        </div>
+
+        <div class="tab-bar">
+            <button class="tab-btn active" id="tab0" onclick="switchMap(0)">MAP 1</button>
+            <button class="tab-btn" id="tab1" onclick="switchMap(1)">MAP 2</button>
+            <button class="tab-btn" id="tab2" onclick="switchMap(2)">MAP 3</button>
+        </div>
+
+        <div style="overflow-x: auto;">
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 35px;">#</th>
-                        <th>Mốc Xung</th>
-                        <th style="width: 60px;">Tốc độ</th>
+                        <th style="width: 25px;">#</th>
+                        <th>Xung Mốc</th>
+                        <th style="width: 55px;">Tốc độ</th>
                         <th>Hành động</th>
-                        <th style="width: 30px;">Xóa</th>
+                        <th style="width: 25px;">Xóa</th>
                     </tr>
                 </thead>
                 <tbody id="wpTableBody">
-                    <!-- Các dòng mốc sa bàn sẽ được nạp động từ JS -->
+                    <!-- Bắt đầu trống hoàn toàn, không có số ảo -->
                 </tbody>
             </table>
         </div>
 
-        <div class="table-actions">
-            <button class="btn-sub primary" onclick="addCurrentTicksRow()">📍 CHỤP MỐC HIỆN TẠI</button>
-            <button class="btn-sub" onclick="addNewRow()">➕ THÊM MỐC</button>
-        </div>
-        <div class="table-actions-full">
-            <button class="btn-sub success" onclick="uploadMapToCar()">📤 GỬI XUỐNG XE</button>
-            <button class="btn-sub warning" onclick="sendCmd('CMD:SAVE')">💾 LƯU FLASH NVS</button>
-        </div>
-        <div style="margin-top: 6px;">
-            <button class="btn-sub" style="width: 100%;" onclick="sendCmd('CMD:RESET_DEF')">🔄 KHÔI PHỤC MẶC ĐỊNH</button>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <button class="btn-sub primary" style="flex: 1;" onclick="addManualRow()">➕ THÊM MỐC</button>
+            <button class="btn-sub success" style="flex: 1;" onclick="saveMapToCar()">💾 LƯU VÀO XE</button>
+            <button class="btn-sub danger" onclick="clearAllWps()">🗑️</button>
         </div>
     </div>
 
-    <!-- NHẬT KÝ THÔNG BÁO -->
+    <!-- LOG GIAO TIẾP -->
     <div class="card">
-        <div class="card-header">NHẬT KÝ LỆNH BLE</div>
-        <div id="logConsole" class="log-box">> Sẵn sàng kết nối Bluetooth Web BLE...</div>
+        <div class="card-title">NHẬT KÝ LỆNH</div>
+        <div id="logBox" style="font-size: 0.68rem; font-family: monospace; color: var(--accent-cyan); height: 60px; overflow-y: auto; white-space: pre-wrap;">> Sẵn sàng...</div>
     </div>
 
     <script>
-        // UUID chuẩn Nordic UART Service (NUS)
-        const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-        const NUS_RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Web gửi xuống xe (Write)
-        const NUS_TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Xe gửi lên Web (Notify)
+        const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const NUS_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        const NUS_TX      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
         let bleDevice = null;
         let rxChar = null;
         let txChar = null;
 
-        let currentSelectedMap = 0;
-        let isRightLane = false;
-        let lastTicksAvg = 0;
-        let currentScanSpeed = 110;
+        let activeMap = 0;
+        let lastLiveTicks = 0;
 
-        // Dữ liệu mặc định 3 map trên Web
-        const mapsData = [
-            // Map 1
-            [
-                { ticks: 1500, speed: 100, action: 0 },
-                { ticks: 2600, speed: 85,  action: 0 },
-                { ticks: 4800, speed: 110, action: 2 }, // Ép Phải (nhánh trong Lượn Sóng)
-                { ticks: 5500, speed: 120, action: 3 }, // Khóa thẳng nét đứt
-                { ticks: 7000, speed: 90,  action: 0 },
-                { ticks: 7800, speed: 60,  action: 4 }  // Phanh đích
-            ],
-            // Map 2
-            [
-                { ticks: 1400, speed: 100, action: 0 },
-                { ticks: 2500, speed: 85,  action: 0 },
-                { ticks: 4800, speed: 110, action: 1 }, // Ép Trái (nhánh ngoài Lượn Sóng)
-                { ticks: 5500, speed: 120, action: 3 },
-                { ticks: 7000, speed: 90,  action: 0 },
-                { ticks: 7800, speed: 60,  action: 4 }
-            ],
-            // Map 3
-            [
-                { ticks: 1600, speed: 95,  action: 2 }, // Qua 2 hình thoi
-                { ticks: 2700, speed: 85,  action: 0 },
-                { ticks: 4900, speed: 110, action: 1 }, // Ép Trái (nhánh ngoài Lượn Sóng)
-                { ticks: 5600, speed: 120, action: 3 },
-                { ticks: 7100, speed: 90,  action: 0 },
-                { ticks: 7900, speed: 60,  action: 4 }
-            ]
-        ];
+        // BẮT ĐẦU TRỐNG HOÀN TOÀN - KHÔNG ĐỂ SỐ ẢO
+        const userMaps = [[], [], []];
 
-        // Khởi tạo 16 ô hiển thị mắt cảm biến
-        function initSensorGrid() {
-            const grid = document.getElementById('sensorGrid');
-            grid.innerHTML = '';
-            for (let i = 0; i < 16; i++) {
-                const cell = document.createElement('div');
-                cell.id = `sen_${i}`;
-                cell.className = 'sensor-cell';
-                cell.innerText = i;
-                grid.appendChild(cell);
-            }
-        }
-        initSensorGrid();
-
-        function log(msg) {
-            const con = document.getElementById('logConsole');
-            con.innerHTML = `> ${msg}\n` + con.innerHTML;
+        // Khởi tạo 16 ô cảm biến
+        const row = document.getElementById('sensorRow');
+        for (let i = 0; i < 16; i++) {
+            const b = document.createElement('div');
+            b.id = `sen_${i}`;
+            b.className = 'sensor-box';
+            b.innerText = i;
+            row.appendChild(b);
         }
 
-        // =====================================================================
-        // WEB BLUETOOTH API
-        // =====================================================================
+        function log(m) {
+            const lb = document.getElementById('logBox');
+            lb.innerHTML = `> ${m}\n` + lb.innerHTML;
+        }
+
+        // ================= BLE CONNECT =================
         async function toggleConnect() {
             if (bleDevice && bleDevice.gatt.connected) {
                 bleDevice.gatt.disconnect();
@@ -632,301 +535,243 @@
             }
 
             try {
-                log('Đang quét tìm thiết bị RACECAR_16SEN...');
+                log('Đang tìm RACECAR_16SEN...');
                 bleDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'RACECAR' }],
-                    optionalServices: [NUS_SERVICE_UUID]
+                    optionalServices: [NUS_SERVICE]
                 });
 
-                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
-                log('Đang kết nối GATT Server...');
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('btnConnect').classList.remove('connected');
+                    document.getElementById('bleText').innerText = '⚡ KẾT NỐI BLE';
+                    log('⚠️ Đã ngắt kết nối!');
+                });
+
                 const server = await bleDevice.gatt.connect();
-
-                log('Đang lấy dịch vụ UART...');
-                const service = await server.getPrimaryService(NUS_SERVICE_UUID);
-
-                rxChar = await service.getCharacteristic(NUS_RX_UUID);
-                txChar = await service.getCharacteristic(NUS_TX_UUID);
+                const service = await server.getPrimaryService(NUS_SERVICE);
+                rxChar = await service.getCharacteristic(NUS_RX);
+                txChar = await service.getCharacteristic(NUS_TX);
 
                 await txChar.startNotifications();
-                txChar.addEventListener('characteristicvaluechanged', handleTelemetry);
+                txChar.addEventListener('characteristicvaluechanged', onTelemetry);
 
-                onConnected();
-                log('✅ ĐÃ KẾT NỐI THÀNH CÔNG VỚI XE!');
-
-                // Yêu cầu lấy thông số Map hiện tại
-                setTimeout(() => sendCmd('CMD:GET_MAP:' + currentSelectedMap), 200);
-
-            } catch (err) {
-                log('❌ Lỗi kết nối BLE: ' + err);
+                document.getElementById('btnConnect').classList.add('connected');
+                document.getElementById('bleText').innerText = '✅ ĐÃ KẾT NỐI';
+                log('✅ Kết nối thành công!');
+            } catch (e) {
+                log('❌ Lỗi BLE: ' + e);
             }
         }
 
-        function onConnected() {
-            const btn = document.getElementById('btnConnect');
-            btn.classList.add('connected');
-            document.getElementById('bleText').innerText = 'ĐÃ KẾT NỐI';
-        }
-
-        function onDisconnected() {
-            const btn = document.getElementById('btnConnect');
-            btn.classList.remove('connected');
-            document.getElementById('bleText').innerText = 'KẾT NỐI BLE';
-            log('⚠️ Đã ngắt kết nối với xe!');
-        }
-
-        async function sendCmd(cmdStr) {
+        async function sendCmd(cmd) {
             if (!rxChar) {
-                log('⚠️ Chưa kết nối Bluetooth!');
+                log('⚠️ Chưa kết nối BLE!');
                 return;
             }
             try {
                 const enc = new TextEncoder();
-                await rxChar.writeValueWithoutResponse(enc.encode(cmdStr));
-                log('📤 Gửi lệnh: ' + cmdStr);
+                await rxChar.writeValueWithoutResponse(enc.encode(cmd));
+                log('📤 ' + cmd);
             } catch (e) {
                 log('❌ Lỗi gửi: ' + e);
             }
         }
 
-        // =====================================================================
-        // CALIBRATION POPUP & COUNTDOWN
-        // =====================================================================
-        let calibTimerInterval = null;
+        // ================= TELEMETRY RECEIVE =================
+        function onTelemetry(event) {
+            const dec = new TextDecoder();
+            const raw = dec.decode(event.target.value).trim();
 
-        function startCalibUI() {
+            if (raw.startsWith('T:')) {
+                // T:tl,tr,pos*10,pwm_l,pwm_r,map,wp,state,mask
+                const p = raw.substring(2).split(',');
+                if (p.length >= 8) {
+                    const tl = parseInt(p[0]);
+                    const tr = parseInt(p[1]);
+                    const pos = parseFloat(p[2]) / 10.0;
+                    const ml = parseInt(p[3]);
+                    const mr = parseInt(p[4]);
+                    const state = parseInt(p[7]);
+                    const mask = p.length >= 9 ? parseInt(p[8]) : 0;
+
+                    lastLiveTicks = Math.round((Math.abs(tl) + Math.abs(tr)) / 2);
+
+                    document.getElementById('txtTicksL').innerText = tl;
+                    document.getElementById('txtTicksR').innerText = tr;
+                    document.getElementById('txtPwmL').innerText = ml;
+                    document.getElementById('txtPwmR').innerText = mr;
+                    document.getElementById('posValue').innerText = `TÂM: ${pos.toFixed(1)}`;
+
+                    // Cập nhật trạng thái
+                    let st = 'STOPPED';
+                    if (state === 1) st = '🐢 QUÉT MAP...';
+                    else if (state === 2) st = '🚀 ĐUA BUNG GA!';
+                    document.getElementById('carStateBadge').innerText = st;
+
+                    // Thước ngắm
+                    const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
+                    document.getElementById('gaugeDot').style.left = `${pct}%`;
+
+                    // 16 MẮT REAL-TIME
+                    let blk = 0;
+                    for (let i = 0; i < 16; i++) {
+                        const on = (mask & (1 << i)) !== 0;
+                        const el = document.getElementById(`sen_${i}`);
+                        if (el) {
+                            if (on) {
+                                el.classList.add('active');
+                                el.innerText = '#';
+                            } else {
+                                el.classList.remove('active');
+                                el.innerText = i;
+                            }
+                        }
+                        if (on) blk++;
+                    }
+                    document.getElementById('blackCountBadge').innerText = `${blk}/16 ĐEN`;
+                }
+            } else if (raw.startsWith('ACK:')) {
+                log('📥 ' + raw);
+                if (raw === 'ACK:CALIB_DONE') {
+                    finishCalibUI();
+                } else if (raw === 'ACK:SCAN_FINISHED') {
+                    log('🎉 Xe đã chạm đích! Dừng tại: ' + lastLiveTicks + ' xung');
+                    alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn!\nTổng xung: ' + lastLiveTicks + ' ticks.');
+                }
+            }
+        }
+
+        // ================= CALIBRATION UI =================
+        let calibInt = null;
+
+        function startCalib() {
             sendCmd('CMD:CALIB');
-            const modal = document.getElementById('calibModal');
-            const prog = document.getElementById('calibProgress');
-            const timerTxt = document.getElementById('calibTimer');
-            const closeBtn = document.getElementById('calibCloseBtn');
-            const title = document.getElementById('calibTitle');
-            const desc = document.getElementById('calibDesc');
-            const icon = document.getElementById('calibIcon');
+            const m = document.getElementById('calibModal');
+            const p = document.getElementById('calibProgress');
+            const t = document.getElementById('calibTimer');
+            const c = document.getElementById('calibCloseBtn');
+            m.style.display = 'flex';
+            c.style.display = 'none';
+            p.style.width = '0%';
+            t.innerText = '4.0s';
 
-            modal.style.display = 'flex';
-            closeBtn.style.display = 'none';
-            icon.innerText = '🌀';
-            title.innerText = 'ĐANG CALIB QUÉT VẠCH';
-            desc.innerText = 'Hãy lia đầu xe qua lại vạch đen liên tục trong 4 giây!';
-            prog.style.width = '0%';
-
-            let elapsed = 0;
-            const total = 4000;
-            clearInterval(calibTimerInterval);
-
-            calibTimerInterval = setInterval(() => {
-                elapsed += 100;
-                const remain = Math.max((total - elapsed) / 1000, 0);
-                timerTxt.innerText = `${remain.toFixed(1)}s`;
-                prog.style.width = `${Math.min((elapsed / total) * 100, 100)}%`;
-
-                if (elapsed >= total) {
-                    clearInterval(calibTimerInterval);
-                    timerTxt.innerText = 'ĐÃ LƯU NGƯỠNG!';
-                    icon.innerText = '✅';
-                    title.innerText = 'CALIB HOÀN TẤT!';
-                    desc.innerText = 'Cảm biến đã nhận diện thành công Min/Max! Đặt xe lên line để xem các mắt sáng.';
-                    closeBtn.style.display = 'block';
+            let cur = 0;
+            clearInterval(calibInt);
+            calibInt = setInterval(() => {
+                cur += 100;
+                const rem = Math.max((4000 - cur) / 1000, 0);
+                t.innerText = rem.toFixed(1) + 's';
+                p.style.width = ((cur / 4000) * 100) + '%';
+                if (cur >= 4000) {
+                    clearInterval(calibInt);
                 }
             }, 100);
+        }
+
+        function finishCalibUI() {
+            clearInterval(calibInt);
+            document.getElementById('calibProgress').style.width = '100%';
+            document.getElementById('calibTimer').innerText = 'XONG!';
+            document.getElementById('calibIcon').innerText = '✅';
+            document.getElementById('calibTitle').innerText = 'CALIB THÀNH CÔNG!';
+            document.getElementById('calibDesc').innerText = '16 mắt đã lưu ngưỡng. Giờ bạn có thể thấy mắt sáng đèn real-time!';
+            document.getElementById('calibCloseBtn').style.display = 'block';
         }
 
         function closeCalibModal() {
             document.getElementById('calibModal').style.display = 'none';
         }
 
-        // =====================================================================
-        // ĐIỀU CHỈNH TỐC ĐỘ DÒ SA BÀN (SCAN SPEED)
-        // =====================================================================
-        function onScanSpeedChange(val) {
-            currentScanSpeed = parseInt(val);
-            document.getElementById('scanSpdVal').innerText = `${currentScanSpeed} PWM`;
-            document.getElementById('sliderScanSpd').value = currentScanSpeed;
-            sendCmd(`CMD:SCAN_SPD:${currentScanSpeed}`);
+        // ================= PID CONFIG =================
+        function sendPID() {
+            const kp = document.getElementById('cfgKp').value;
+            const ki = document.getElementById('cfgKi').value;
+            const kd = document.getElementById('cfgKd').value;
+            const spd = document.getElementById('cfgSpeed').value;
+            sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
+            sendCmd(`CMD:SCAN_SPD:${spd}`);
         }
 
-        function adjustScanSpeed(delta) {
-            let nextVal = currentScanSpeed + delta;
-            if (nextVal < 60) nextVal = 60;
-            if (nextVal > 180) nextVal = 180;
-            onScanSpeedChange(nextVal);
-        }
-
-        // =====================================================================
-        // XỬ LÝ DỮ LIỆU TELEMETRY NHẬN TỪ ESP32
-        // =====================================================================
-        function handleTelemetry(event) {
-            const dec = new TextDecoder();
-            const text = dec.decode(event.target.value).trim();
-
-            if (text.startsWith('T:')) {
-                // Định dạng: T:ticks_L,ticks_R,pos*10,pwm_L,pwm_R,map,wp,state,mask
-                const parts = text.substring(2).split(',');
-                if (parts.length >= 8) {
-                    const tl = parseInt(parts[0]);
-                    const tr = parseInt(parts[1]);
-                    const pos = parseFloat(parts[2]) / 10.0;
-                    const ml = parseInt(parts[3]);
-                    const mr = parseInt(parts[4]);
-                    const wp = parseInt(parts[6]);
-                    const state = parseInt(parts[7]);
-                    const mask = parts.length >= 9 ? parseInt(parts[8]) : 0;
-
-                    lastTicksAvg = Math.round((Math.abs(tl) + Math.abs(tr)) / 2);
-
-                    document.getElementById('valTicksL').innerText = tl;
-                    document.getElementById('valTicksR').innerText = tr;
-                    document.getElementById('valPwmL').innerText = ml;
-                    document.getElementById('valPwmR').innerText = mr;
-                    document.getElementById('posText').innerText = `VỊ TRÍ: ${pos.toFixed(1)}`;
-
-                    let stateText = '🛑 ĐANG DỪNG';
-                    if (state === 1) stateText = '🐢 LƯỢT 1: ĐANG QUÉT MAP';
-                    else if (state === 2) stateText = `🚀 LƯỢT 2: SECTOR ${wp}`;
-                    document.getElementById('wpStatus').innerText = stateText;
-
-                    // Cập nhật vị trí thước ngắm (-75.0 -> 0% .. 0 -> 50% .. +75.0 -> 100%)
-                    const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
-                    document.getElementById('gaugeIndicator').style.left = `${pct}%`;
-
-                    // Cập nhật 16 mắt cảm biến trực quan theo mask
-                    let blackCount = 0;
-                    for (let i = 0; i < 16; i++) {
-                        const isBlack = (mask & (1 << i)) !== 0;
-                        const cell = document.getElementById(`sen_${i}`);
-                        if (cell) {
-                            if (isBlack) {
-                                cell.style.background = '#00f0ff';
-                                cell.style.color = '#000';
-                                cell.style.boxShadow = '0 0 8px #00f0ff';
-                                cell.innerText = '#';
-                            } else {
-                                cell.style.background = '#1e293b';
-                                cell.style.color = '#475569';
-                                cell.style.boxShadow = 'none';
-                                cell.innerText = i;
-                            }
-                        }
-                        if (isBlack) blackCount++;
-                    }
-                    document.getElementById('blackCountText').innerText = `${blackCount}/16 MẮT ĐEN`;
-                }
-            } else if (text.startsWith('ACK:')) {
-                log('📥 ' + text);
-                if (text === 'ACK:CALIB_DONE') {
-                    log('✅ [CALIB XONG] Đã lưu ngưỡng và sẵn sàng!');
-                } else if (text === 'ACK:SCAN_FINISHED') {
-                    log('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!');
-                    alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn và dừng tại đích!\nSố xung tổng cộng: ' + lastTicksAvg + ' ticks.');
-                }
-            } else if (text.startsWith('WP:')) {
-                // Nhận cấu hình từ xe: WP:<map>,<idx>,<ticks>,<speed>,<action>
-                const p = text.substring(3).split(',');
-                if (p.length >= 5) {
-                    const m = parseInt(p[0]);
-                    const idx = parseInt(p[1]);
-                    const ticks = parseInt(p[2]);
-                    const spd = parseInt(p[3]);
-                    const act = parseInt(p[4]);
-
-                    if (m < 3) {
-                        mapsData[m][idx] = { ticks: ticks, speed: spd, action: act };
-                        if (m === currentSelectedMap) renderTable();
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // QUẢN LÝ GIAO DIỆN VÀ BẢNG WAYPOINT
-        // =====================================================================
-        function selectMap(idx) {
-            currentSelectedMap = idx;
-            document.querySelectorAll('.tab-btn').forEach((b, i) => {
-                b.classList.toggle('active', i === idx);
-            });
-            document.getElementById('mapTitle').innerText = `CẤU HÌNH MỐC XUNG MAP ${idx + 1}`;
-            renderTable();
+        // ================= WAYPOINT TABLE (CHỤP THẬT) =================
+        function switchMap(idx) {
+            activeMap = idx;
+            document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+            renderWpTable();
             sendCmd(`CMD:MAP:${idx}`);
         }
 
-        function toggleLane() {
-            isRightLane = !isRightLane;
-            const btn = document.getElementById('btnLane');
-            const lbl = document.getElementById('statusLane');
-            btn.classList.toggle('active-right', isRightLane);
-            btn.innerText = isRightLane ? 'LÀN PHẢI (MIRROR)' : 'LÀN TRÁI';
-            lbl.innerText = isRightLane ? 'LÀN PHẢI (ĐỐI XỨNG)' : 'LÀN TRÁI';
-            sendCmd(`CMD:LANE:${isRightLane ? 1 : 0}`);
-        }
-
-        function renderTable() {
+        function renderWpTable() {
             const tb = document.getElementById('wpTableBody');
             tb.innerHTML = '';
-            const wps = mapsData[currentSelectedMap];
-            document.getElementById('wpCountBadge').innerText = `${wps.length} MỐC`;
+            const list = userMaps[activeMap];
+            document.getElementById('wpTotalBadge').innerText = `${list.length} MỐC`;
 
-            wps.forEach((wp, i) => {
+            list.forEach((w, i) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="font-weight: 700;">${i}</td>
-                    <td><input type="number" class="table-input" value="${wp.ticks}" onchange="updateWp(${i}, 'ticks', this.value)"></td>
-                    <td><input type="number" class="table-input" value="${wp.speed}" onchange="updateWp(${i}, 'speed', this.value)"></td>
+                    <td style="font-weight: 800;">${i}</td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" onchange="editWp(${i}, 'ticks', this.value)"></td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" onchange="editWp(${i}, 'speed', this.value)"></td>
                     <td>
-                        <select class="table-select" onchange="updateWp(${i}, 'action', this.value)">
-                            <option value="0" ${wp.action === 0 ? 'selected' : ''}>Bình thường (PID)</option>
-                            <option value="1" ${wp.action === 1 ? 'selected' : ''}>Ép Trái (Lượn Sóng)</option>
-                            <option value="2" ${wp.action === 2 ? 'selected' : ''}>Ép Phải (Lượn Sóng)</option>
-                            <option value="3" ${wp.action === 3 ? 'selected' : ''}>Khóa Thẳng (Nét Đứt)</option>
-                            <option value="4" ${wp.action === 4 ? 'selected' : ''}>Phanh Dừng Đích</option>
+                        <select class="form-input" style="padding: 2px; font-size: 0.72rem;" onchange="editWp(${i}, 'action', this.value)">
+                            <option value="0" ${w.action === 0 ? 'selected' : ''}>PID chuẩn</option>
+                            <option value="1" ${w.action === 1 ? 'selected' : ''}>Ép Trái (Lượn Sóng)</option>
+                            <option value="2" ${w.action === 2 ? 'selected' : ''}>Ép Phải (Lượn Sóng)</option>
+                            <option value="3" ${w.action === 3 ? 'selected' : ''}>Khóa Thẳng</option>
+                            <option value="4" ${w.action === 4 ? 'selected' : ''}>Phanh Đích</option>
                         </select>
                     </td>
-                    <td><button style="background: none; border: none; color: var(--accent-red); cursor: pointer; font-size: 0.9rem;" onclick="removeWp(${i})">✖</button></td>
+                    <td><button style="background:none; border:none; color:var(--accent-red); cursor:pointer; font-weight:800;" onclick="delWp(${i})">✖</button></td>
                 `;
                 tb.appendChild(tr);
             });
         }
 
-        function updateWp(idx, field, val) {
-            mapsData[currentSelectedMap][idx][field] = parseInt(val);
+        function captureCurrentTicks() {
+            const ticks = lastLiveTicks > 0 ? lastLiveTicks : 1000;
+            userMaps[activeMap].push({ ticks: ticks, speed: 110, action: 0 });
+            renderWpTable();
+            log(`📍 Đã chụp mốc thực tế: ${ticks} xung`);
         }
 
-        function removeWp(idx) {
-            mapsData[currentSelectedMap].splice(idx, 1);
-            renderTable();
+        function addManualRow() {
+            const list = userMaps[activeMap];
+            const nextTicks = list.length > 0 ? list[list.length - 1].ticks + 1000 : 1000;
+            list.push({ ticks: nextTicks, speed: 110, action: 0 });
+            renderWpTable();
         }
 
-        function addNewRow() {
-            const wps = mapsData[currentSelectedMap];
-            const lastTicks = wps.length > 0 ? wps[wps.length - 1].ticks + 1000 : 1000;
-            wps.push({ ticks: lastTicks, speed: 100, action: 0 });
-            renderTable();
+        function editWp(idx, f, v) {
+            userMaps[activeMap][idx][f] = parseInt(v);
         }
 
-        function addCurrentTicksRow() {
-            const wps = mapsData[currentSelectedMap];
-            const snapTicks = lastTicksAvg > 0 ? lastTicksAvg : 1500;
-            wps.push({ ticks: snapTicks, speed: 95, action: 0 });
-            renderTable();
-            log(`📍 Đã chụp mốc xung hiện tại: ${snapTicks}`);
+        function delWp(idx) {
+            userMaps[activeMap].splice(idx, 1);
+            renderWpTable();
         }
 
-        async function uploadMapToCar() {
-            const wps = mapsData[currentSelectedMap];
-            log(`Đang nạp ${wps.length} mốc xuống Map ${currentSelectedMap + 1}...`);
-            await sendCmd(`CMD:WP_CLEAR:${currentSelectedMap}`);
+        function clearAllWps() {
+            userMaps[activeMap] = [];
+            renderWpTable();
+            sendCmd(`CMD:WP_CLEAR:${activeMap}`);
+            log('🗑️ Đã xóa sạch mốc Map ' + (activeMap + 1));
+        }
 
-            for (let i = 0; i < wps.length; i++) {
-                const w = wps[i];
+        async function saveMapToCar() {
+            const list = userMaps[activeMap];
+            log(`Đang lưu ${list.length} mốc Map ${activeMap + 1} vào xe...`);
+            await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
+
+            for (let i = 0; i < list.length; i++) {
+                const w = list[i];
                 await new Promise(r => setTimeout(r, 40));
-                await sendCmd(`CMD:WP_SET:${currentSelectedMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
+                await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
             }
-            log(`✅ Đã nạp thành công toàn bộ mốc Map ${currentSelectedMap + 1} xuống xe!`);
+            await sendCmd('CMD:SAVE');
+            log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);
         }
 
-        // Khởi tạo bảng ban đầu
-        renderTable();
+        renderWpTable();
     </script>
 </body>
 </html>
