@@ -18,7 +18,7 @@ static PID_Config_t pidConfig = {
     .Kd = 10.0f,
     .baseSpeed = 100,
     .maxSpeed = 220,
-    .minSpeed = -95
+    .minSpeed = -115
 };
 
 static bool autoMode = false;
@@ -33,6 +33,10 @@ static unsigned long lostLineStartTime = 0;
 static bool isLineCurrentlyLost = false;
 static int8_t lastKnownDirection = 0; // -1: Trái, +1: Phải, 0: Giữa tâm
 static float lastKnownPosition = 0.0f;// Vị trí vạch cuối cùng còn nhìn thấy
+
+// Cơ chế chốt cua góc vuông 90° (Active 90° Corner Latch)
+static uint8_t s_corner_latch = 0; // 0: None, 1: Turn Left, 2: Turn Right
+static unsigned long s_corner_latch_time = 0;
 
 static uint8_t s_sector_action = 0; // 0: Normal, 1: Force Left, 2: Force Right, 3: Lock Straight, 4: Brake
 
@@ -55,6 +59,8 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
     isLineCurrentlyLost = false;
     lastKnownDirection = 0;
     lastKnownPosition = 0.0f;
+    s_corner_latch = 0;
+    s_corner_latch_time = 0;
 }
 
 void pid_set_tunings(float kp, float ki, float kd) {
@@ -80,6 +86,8 @@ void pid_set_auto_mode(bool enable) {
     isLineCurrentlyLost = false;
     lastKnownDirection = 0;
     lastKnownPosition = 0.0f;
+    s_corner_latch = 0;
+    s_corner_latch_time = 0;
     if (!autoMode) {
         currentCase = LINE_CASE_STOPPED;
         motor_stop();
@@ -152,11 +160,36 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
         return LINE_CASE_STOPPED;
     }
 
+    // Nếu đang trong trạng thái chốt cua góc vuông -> Giữ nguyên trạng thái này
+    if (s_corner_latch == 1) return LINE_CASE_CORNER_LEFT;
+    if (s_corner_latch == 2) return LINE_CASE_CORNER_RIGHT;
+
     // Kiểm tra vạch ngang / ngã tư / vạch đích (từ 11 mắt đen trở lên)
     uint16_t mask = sensor_get_line_bits();
     uint8_t totalBlack = __builtin_popcount(mask);
     if (totalBlack >= 11) {
         return LINE_CASE_CROSS_LINE;
+    }
+
+    // NHẬN DIỆN GÓC VUÔNG 90 ĐỘ CHỦ ĐỘNG (ACTIVE 90° CORNER DETECTION)
+    // Áp dụng khi không khóa chạy thẳng (ACTION_LOCK_STRAIGHT) và không phanh đích (ACTION_BRAKE_STOP)
+    if (s_sector_action != 3 && s_sector_action != 4) {
+        uint8_t leftOuter = __builtin_popcount(mask & 0x000F);   // Cụm mắt 0,1,2,3 cực trái
+        uint8_t rightOuter = __builtin_popcount(mask & 0xF000);  // Cụm mắt 12,13,14,15 cực phải
+
+        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang, mắt phải hoàn toàn trắng
+        if (leftOuter >= 2 && rightOuter == 0 && (mask & 0x0003) != 0 && totalBlack <= 9) {
+            s_corner_latch = 1;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_LEFT;
+        }
+
+        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang, mắt trái hoàn toàn trắng
+        if (rightOuter >= 2 && leftOuter == 0 && (mask & 0xC000) != 0 && totalBlack <= 9) {
+            s_corner_latch = 2;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_RIGHT;
+        }
     }
 
     // Kiểm tra mất vạch hoàn toàn
@@ -196,12 +229,47 @@ void pid_line_follow_step(void) {
         return;
     }
 
+    // =========================================================================
+    // XỬ LÝ CHỐT CUA GÓC VUÔNG 90 ĐỘ (PIVOT SPIN CỰC MẠNH)
+    // =========================================================================
+    if (s_corner_latch != 0) {
+        unsigned long latchElapsed = millis() - s_corner_latch_time;
+        uint16_t mask = sensor_get_line_bits();
+        // Mắt tâm (6, 7, 8, 9) khóa lại line
+        bool center_locked = ((mask & 0x03C0) != 0);
+
+        if ((latchElapsed >= 35 && center_locked) || latchElapsed > 380) {
+            s_corner_latch = 0;
+            integralError = 0.0f;
+            lastError = 0.0f;
+        } else {
+            if (s_corner_latch == 1) {
+                // Xoay góc vuông Trái: Bánh trái giật lùi, bánh phải phóng tới
+                motor_set_speeds(-110, 135);
+            } else {
+                // Xoay góc vuông Phải: Bánh trái phóng tới, bánh phải giật lùi
+                motor_set_speeds(135, -110);
+            }
+            return;
+        }
+    }
+
     float position = 0.0f;
     uint8_t blackCount = 0;
     pid_calculate_position(&position, &blackCount);
 
     // Xác định trạng thái
     currentCase = pid_detect_case(position, blackCount);
+
+    // Nếu vừa kích hoạt chốt cua góc vuông trong pid_detect_case -> Thực thi ngay
+    if (s_corner_latch != 0) {
+        if (s_corner_latch == 1) {
+            motor_set_speeds(-110, 135);
+        } else {
+            motor_set_speeds(135, -110);
+        }
+        return;
+    }
 
     unsigned long now = millis();
     float dt = (float)(now - lastComputeTime) / 1000.0f;
@@ -264,24 +332,42 @@ void pid_line_follow_step(void) {
         }
 
         // =====================================================================
-        // CASE 2: MẤT LINE (Dùng Line Memory xoay êm tìm lại)
+        // CASE: GÓC VUÔNG 90 ĐỘ TRÁI / PHẢI
+        // =====================================================================
+        case LINE_CASE_CORNER_LEFT: {
+            motor_set_speeds(-110, 135);
+            break;
+        }
+
+        case LINE_CASE_CORNER_RIGHT: {
+            motor_set_speeds(135, -110);
+            break;
+        }
+
+        // =====================================================================
+        // CASE 2: MẤT LINE (Dùng Line Memory xoay mạnh mẽ tìm lại)
         // =====================================================================
         case LINE_CASE_LOST_LINE: {
             unsigned long lostElapsed = millis() - lostLineStartTime;
 
-            // Mất vạch quá 1.2 giây -> Phanh dừng xe an toàn
-            if (lostElapsed > 1200) {
+            // Mất vạch quá 1.5 giây -> Phanh dừng xe an toàn
+            if (lostElapsed > 1500) {
                 motor_stop();
                 break;
             }
 
-            // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối
-            if (lastKnownDirection < 0) {
-                motor_set_speeds(-70, 75); // Xoay tìm vạch bên trái
-            } else if (lastKnownDirection > 0) {
-                motor_set_speeds(75, -70); // Xoay tìm vạch bên phải
+            // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối với lực mạnh
+            if (lastKnownDirection < 0 || lastKnownPosition < -5.0f || lastError < -5.0f) {
+                motor_set_speeds(-110, 130); // Giật xoay mạnh tìm vạch bên trái
+            } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f || lastError > 5.0f) {
+                motor_set_speeds(130, -110); // Giật xoay mạnh tìm vạch bên phải
             } else {
-                motor_stop();
+                // Nếu hướng = 0 (trước đó đi thẳng), dùng lastKnownPosition để quyết định xoay
+                if (lastKnownPosition <= 0.0f) {
+                    motor_set_speeds(-105, 125);
+                } else {
+                    motor_set_speeds(125, -105);
+                }
             }
             break;
         }
@@ -319,11 +405,13 @@ LineCase_t pid_get_current_case(void) {
 
 const char* pid_get_case_name(LineCase_t c) {
     switch (c) {
-        case LINE_CASE_NORMAL_PID: return "NORMAL_PID";
-        case LINE_CASE_LOST_LINE:  return "LOST_LINE";
-        case LINE_CASE_CROSS_LINE: return "CROSS_LINE";
-        case LINE_CASE_DASHED_LINE:return "DASHED_LINE";
-        case LINE_CASE_STOPPED:    return "STOPPED";
+        case LINE_CASE_NORMAL_PID:   return "NORMAL_PID";
+        case LINE_CASE_LOST_LINE:    return "LOST_LINE";
+        case LINE_CASE_CROSS_LINE:   return "CROSS_LINE";
+        case LINE_CASE_DASHED_LINE:  return "DASHED_LINE";
+        case LINE_CASE_CORNER_LEFT:  return "CORNER_LEFT";
+        case LINE_CASE_CORNER_RIGHT: return "CORNER_RIGHT";
+        case LINE_CASE_STOPPED:      return "STOPPED";
         default: return "UNKNOWN";
     }
 }

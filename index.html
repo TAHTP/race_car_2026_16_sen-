@@ -450,7 +450,7 @@
         </div>
 
         <div class="form-row" style="margin-top: 8px;">
-            <button class="btn-sub success" style="width: 100%;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
+            <button id="btnSendPID" class="btn-sub success" style="width: 100%; font-size: 0.85rem; padding: 10px; font-weight: 800; transition: all 0.2s;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
         </div>
     </div>
 
@@ -634,6 +634,8 @@
                 log('📥 ' + raw);
                 if (raw === 'ACK:CALIB_DONE') {
                     finishCalibUI();
+                } else if (raw === 'ACK:PID_UPDATED') {
+                    onPIDUpdatedFeedback();
                 } else if (raw === 'ACK:SCAN_FINISHED') {
                     log('🎉 Xe đã chạm đích! Dừng tại: ' + lastLiveTicks + ' xung');
                     alert('🎉 [XONG LƯỢT 1] Xe đã quét xong sa bàn!\nTổng xung: ' + lastLiveTicks + ' ticks.');
@@ -683,13 +685,62 @@
         }
 
         // ================= PID CONFIG =================
-        function sendPID() {
+        async function sendPID() {
+            const btn = document.getElementById('btnSendPID');
+            if (!rxChar) {
+                log('⚠️ Chưa kết nối BLE!');
+                if (btn) {
+                    btn.style.background = '#eab308';
+                    btn.style.borderColor = '#ca8a04';
+                    btn.innerText = '⚠️ CHƯA KẾT NỐI BLE!';
+                    setTimeout(() => {
+                        btn.style.background = '';
+                        btn.style.borderColor = '';
+                        btn.innerText = '📤 NẠP PID XUỐNG XE';
+                    }, 1400);
+                }
+                return;
+            }
+
             const kp = document.getElementById('cfgKp').value;
             const ki = document.getElementById('cfgKi').value;
             const kd = document.getElementById('cfgKd').value;
             const spd = document.getElementById('cfgSpeed').value;
-            sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
-            sendCmd(`CMD:SCAN_SPD:${spd}`);
+
+            if (btn) {
+                btn.style.background = '#0284c7';
+                btn.style.borderColor = '#38bdf8';
+                btn.style.transform = 'scale(0.97)';
+                btn.innerText = '⏳ ĐANG GỬI XUỐNG XE...';
+            }
+
+            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
+            await sendCmd(`CMD:SCAN_SPD:${spd}`);
+
+            // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
+            setTimeout(() => {
+                if (btn && btn.innerText.includes('ĐANG GỬI')) {
+                    onPIDUpdatedFeedback();
+                }
+            }, 200);
+        }
+
+        function onPIDUpdatedFeedback() {
+            const btn = document.getElementById('btnSendPID');
+            if (btn) {
+                btn.style.background = '#10b981';
+                btn.style.borderColor = '#34d399';
+                btn.style.boxShadow = '0 0 16px rgba(16, 185, 129, 0.8)';
+                btn.style.transform = 'scale(1.02)';
+                btn.innerText = '✅ ĐÃ NẠP THÀNH CÔNG!';
+                setTimeout(() => {
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                    btn.style.boxShadow = '';
+                    btn.style.transform = '';
+                    btn.innerText = '📤 NẠP PID XUỐNG XE';
+                }, 1500);
+            }
         }
 
         // ================= WAYPOINT TABLE (CHỤP THẬT) =================

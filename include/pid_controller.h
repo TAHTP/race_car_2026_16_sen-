@@ -14,6 +14,8 @@ typedef enum {
     LINE_CASE_LOST_LINE,       // Mất vạch (dùng Line Memory xoay tìm lại)
     LINE_CASE_CROSS_LINE,      // Vạch ngang / ngã tư / vạch đích (chạy thẳng vượt qua)
     LINE_CASE_DASHED_LINE,     // Vạch nét đứt (chạy thẳng vượt qua)
+    LINE_CASE_CORNER_LEFT,     // Góc vuông 90° Trái (Chốt cua gắt xoay tại chỗ)
+    LINE_CASE_CORNER_RIGHT,    // Góc vuông 90° Phải (Chốt cua gắt xoay tại chỗ)
     LINE_CASE_STOPPED          // Dừng xe
 } LineCase_t;
 
