@@ -49,9 +49,11 @@ int16_t car_get_scan_speed(void) {
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         deviceConnected = true;
+        Serial.println("\n>> 🔵 [BLE] ĐÃ KẾT NỐI VỚI WEB!");
     }
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
+        Serial.println("\n>> 🔴 [BLE] ĐÃ NGẮT KẾT NỐI KHỎI WEB!");
         // Bật lại quảng bá để Web có thể quét kết nối lại bất cứ lúc nào
         pServer->startAdvertising();
     }
@@ -226,6 +228,13 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
 
     pTxCharacteristic->setValue((uint8_t*)buf, strlen(buf));
     pTxCharacteristic->notify();
+
+    // In Serial mỗi 500ms để kiểm tra tận mắt dữ liệu gửi lên Web
+    static uint32_t s_last_dbg = 0;
+    if (millis() - s_last_dbg > 500) {
+        s_last_dbg = millis();
+        Serial.printf(">> 📡 [BLE GỬI]: %s\n", buf);
+    }
 }
 
 void ble_send_map_data(uint8_t map_idx) {

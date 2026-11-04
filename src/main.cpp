@@ -116,6 +116,7 @@ void controlTask(void *pvParameters) {
 // CORE 0: TASK BLE & TRUYỀN THÔNG WEB (Chạy ngầm ở Core 0)
 // =========================================================================
 void bleTask(void *pvParameters) {
+    static uint32_t s_last_wait_log = 0;
     for (;;) {
         // Bắn dữ liệu Telemetry về Web mỗi 60ms
         if (ble_is_connected()) {
@@ -130,6 +131,11 @@ void bleTask(void *pvParameters) {
 
             // Gói duy nhất: Tọa độ, Xung, PWM và Mask 16 mắt (T:)
             ble_send_telemetry(tl, tr, pos, ml, mr, m_idx, s_active_wp_idx, state, mask);
+        } else {
+            if (millis() - s_last_wait_log > 2000) {
+                s_last_wait_log = millis();
+                Serial.println(">> ⏳ [BLE] Đang chờ Web kết nối... (Tên BLE: RACECAR_16SEN)");
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(60)); // 60ms/lần (~16Hz) rất mượt cho Web
