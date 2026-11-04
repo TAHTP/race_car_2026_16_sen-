@@ -134,8 +134,12 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
     for (int i = start_i; i <= end_i; i++) {
         uint16_t cal = sensor_get_calibrated(i);
 
-        // Lọc nhiễu nền: chỉ lấy tín hiệu thực sự có vạch đen (>= 150)
-        if (cal >= 150) {
+        // Lọc mắt cô độc: Một mắt chỉ hợp lệ nếu chính nó hoặc ít nhất 1 mắt sát vách cũng thấy đen
+        bool has_neighbor = (i > 0 && sensor_get_calibrated(i - 1) >= 150) ||
+                            (i < N_SENSORS - 1 && sensor_get_calibrated(i + 1) >= 150);
+
+        // Lọc nhiễu nền: chỉ lấy tín hiệu thực sự có vạch đen (>= 150) và không phải mắt cô độc lẻ loi
+        if (cal >= 150 && has_neighbor) {
             sumCalibrated += cal;
             sumWeights += (float)cal * SENSOR_WEIGHTS[i];
             if (cal >= 500) {

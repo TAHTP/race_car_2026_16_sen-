@@ -60,7 +60,13 @@ uint16_t sensor_read_mux(uint8_t channel) {
 
 void sensor_read_all(void) {
     for (uint8_t i = 0; i < N_SENSORS; i++) {
-        sensorRaw[i] = sensor_read_mux(i);
+        uint16_t raw = sensor_read_mux(i);
+        if (isCalibrating) {
+            sensorRaw[i] = raw;
+        } else {
+            // Bộ lọc số IIR siêu nhẹ (85% mới, 15% cũ) làm phẳng xung nhiễu đèn 100Hz và EMI motor
+            sensorRaw[i] = (uint16_t)(((uint32_t)raw * 85 + (uint32_t)sensorRaw[i] * 15) / 100);
+        }
     }
 }
 
@@ -199,8 +205,12 @@ int16_t sensor_get_line_position_analog(void) {
     for (uint8_t i = 0; i < N_SENSORS; i++) {
         uint16_t val = sensor_get_calibrated(i);
 
-        // Lọc nhiễu nền: chỉ lấy tín hiệu vạch đen rõ ràng (> 150 trên 1000)
-        if (val > 150) {
+        // Lọc mắt cô độc: Một mắt chỉ hợp lệ nếu chính nó hoặc ít nhất 1 mắt sát vách cũng thấy đen
+        bool has_neighbor = (i > 0 && sensor_get_calibrated(i - 1) >= 150) ||
+                            (i < N_SENSORS - 1 && sensor_get_calibrated(i + 1) >= 150);
+
+        // Lọc nhiễu nền: chỉ lấy tín hiệu vạch đen rõ ràng (> 150 trên 1000) và không phải mắt cô độc lẻ loi
+        if (val > 150 && has_neighbor) {
             uint32_t active_weight = val - 150; // Trừ nền để triệt tiêu hoàn toàn nhiễu sàn
             weighted_sum += active_weight * (i * 1000UL);
             sum += active_weight;
