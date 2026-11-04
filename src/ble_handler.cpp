@@ -168,7 +168,6 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 
 void ble_init(const char *device_name) {
     BLEDevice::init(device_name);
-    BLEDevice::setMTU(256);
 
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -226,21 +225,6 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
              pwm_l, pwm_r, map_idx, wp_idx, car_state, sensor_mask);
 
     pTxCharacteristic->setValue((uint8_t*)buf, strlen(buf));
-    pTxCharacteristic->notify();
-}
-
-void ble_send_sensor_pct(void) {
-    if (!deviceConnected || !pTxCharacteristic) return;
-
-    // Gói tin chi tiết từng mắt: SEN:val0,val1,val2,...,val15 (0..100%)
-    char buf[128];
-    int len = snprintf(buf, sizeof(buf), "SEN:");
-    for (int i = 0; i < N_SENSORS; i++) {
-        uint8_t pct = (uint8_t)(sensor_get_calibrated(i) / 10);
-        if (pct > 100) pct = 100;
-        len += snprintf(buf + len, sizeof(buf) - len, (i == 0) ? "%u" : ",%u", pct);
-    }
-    pTxCharacteristic->setValue((uint8_t*)buf, len);
     pTxCharacteristic->notify();
 }
 

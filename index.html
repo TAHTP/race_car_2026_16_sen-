@@ -664,6 +664,11 @@
                                 el.classList.remove('active');
                             }
                         }
+                        const vEl = document.getElementById(`sen_val_${i}`);
+                        if (vEl) {
+                            vEl.innerText = on ? '1' : '0';
+                            vEl.style.color = on ? '#00f0ff' : '#475569';
+                        }
                         if (on) blk++;
                     }
                     document.getElementById('blackCountBadge').innerText = `${blk}/16 ĐEN`;

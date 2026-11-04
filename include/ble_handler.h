@@ -33,9 +33,6 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
                         uint8_t map_idx, uint8_t wp_idx, uint8_t car_state,
                         uint16_t sensor_mask);
 
-// Bắn giá trị phần trăm (0..100%) của 16 mắt cảm biến về Web (SEN:v0,v1,...)
-void ble_send_sensor_pct(void);
-
 // Bắn chuỗi thông báo chung hoặc danh sách Map về Web
 void ble_send_string(const char *str);
 void ble_send_map_data(uint8_t map_idx);
