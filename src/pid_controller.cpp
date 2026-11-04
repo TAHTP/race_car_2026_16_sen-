@@ -1,6 +1,7 @@
 #include "pid_controller.h"
 #include "sensor.h"
 #include "motor.h"
+#include "encoder.h"
 #include <Arduino.h>
 
 // =================== CẤU HÌNH TRỌNG SỐ CHO 16 MẮT ===================
@@ -28,6 +29,7 @@ static float lastError = 0.0f;
 static float integralError = 0.0f;
 static float lastCorrection = 0.0f;
 static unsigned long lastComputeTime = 0;
+static float s_ramped_base = 0.0f; // Tốc độ nền tăng tốc mềm (Soft-start Ramp)
 
 #define DASHED_LINE_TIMEOUT_MS  60    // Thời gian cho phép lướt qua nét đứt (ms)
 static unsigned long lostLineStartTime = 0;
@@ -62,6 +64,7 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
     lastKnownPosition = 0.0f;
     s_corner_latch = 0;
     s_corner_latch_time = 0;
+    s_ramped_base = 0.0f;
 }
 
 void pid_set_tunings(float kp, float ki, float kd) {
@@ -99,6 +102,7 @@ void pid_set_auto_mode(bool enable) {
     s_corner_latch_time = 0;
     if (!autoMode) {
         currentCase = LINE_CASE_STOPPED;
+        s_ramped_base = 0.0f;
         motor_stop();
     } else {
         integralError = 0.0f;
@@ -340,12 +344,37 @@ void pid_line_follow_step(void) {
             int16_t rightSpeed = 0;
 
             if (pidConfig.baseSpeed > 0) {
-                // Khi xe chạy trên sàn: Giảm tốc ôm cua chủ động (Dynamic Corner Drag)
-                int16_t currentBase = pidConfig.baseSpeed - (int16_t)(absErr * 0.55f);
+                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up): Tăng dần tốc độ từ 38 lên baseSpeed trong ~200ms
+                if (s_ramped_base < 38.0f) {
+                    s_ramped_base = 38.0f;
+                }
+                if (s_ramped_base < (float)pidConfig.baseSpeed) {
+                    s_ramped_base += 1.0f; // Mỗi chu kỳ 2ms tăng 1 PWM
+                    if (s_ramped_base > (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
+                } else if (s_ramped_base > (float)pidConfig.baseSpeed) {
+                    s_ramped_base -= 2.0f;
+                    if (s_ramped_base < (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
+                }
+
+                // Giảm tốc ôm cua chủ động (Dynamic Corner Drag)
+                int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
                 if (currentBase < 40) currentBase = 40;
 
-                leftSpeed  = currentBase + (int16_t)lastCorrection;
-                rightSpeed = currentBase - (int16_t)lastCorrection;
+                // 2. BÙ GA THÔNG MINH THEO ENCODER (Sensor-Gated Anti-Stall Boost)
+                // ĐIỀU KIỆN AN TOÀN: Chỉ bù khi xe đã đề-pa xong VÀ 16 mắt xác nhận đang nằm trên vạch line!
+                int16_t auto_boost = 0;
+                if (s_ramped_base >= (float)pidConfig.baseSpeed * 0.85f && blackCount >= 1) {
+                    float v_real = (fabsf(encoder_get_speed_L_mms()) + fabsf(encoder_get_speed_R_mms())) * 0.5f;
+                    float v_expected = (float)currentBase * 9.5f; // Vận tốc kỳ vọng mm/s
+                    if (v_real < v_expected * 0.70f) { // Bị sụt > 30% do pin yếu hoặc lực cản cua/dốc
+                        float deficit = (v_expected * 0.70f) - v_real;
+                        auto_boost = (int16_t)(deficit * 0.035f);
+                        if (auto_boost > 28) auto_boost = 28; // Giới hạn trần tối đa +28 PWM để an toàn tuyệt đối
+                    }
+                }
+
+                leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
+                rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);

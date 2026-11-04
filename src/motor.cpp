@@ -9,13 +9,17 @@ static int16_t s_speed_L = 0;
 static int16_t s_speed_R = 0;
 
 static inline void drive_hbridge_channel(int pin1, int pin2, int speed) {
-    speed = constrain(speed, -255, 255);
     if (speed > 0) {
+        if (speed < 38) speed = 38; // Khử vùng chết ma sát tĩnh GA25
+        speed = constrain(speed, 0, 255);
         ledcWrite(pin1, speed);
         ledcWrite(pin2, 0);
     } else if (speed < 0) {
+        int abs_spd = abs(speed);
+        if (abs_spd < 38) abs_spd = 38; // Khử vùng chết ma sát tĩnh GA25
+        abs_spd = constrain(abs_spd, 0, 255);
         ledcWrite(pin1, 0);
-        ledcWrite(pin2, abs(speed));
+        ledcWrite(pin2, abs_spd);
     } else {
         // Active Short Brake: Kích cả 2 chân cầu H lên cao để ghìm cứng động cơ tức thì
         ledcWrite(pin1, 255);
