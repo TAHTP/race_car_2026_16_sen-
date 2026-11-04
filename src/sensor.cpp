@@ -138,7 +138,13 @@ void sensor_handle_calibration_step(void) {
 
 uint16_t sensor_get_calibrated(uint8_t index) {
     if (index >= N_SENSORS) return 0;
-    if (!calibrationReady) return (sensorRaw[index] * 1000UL) / 4095;
+    if (!calibrationReady) {
+        if (s_global_black_is_higher) {
+            return (sensorRaw[index] * 1000UL) / 4095;
+        } else {
+            return ((4095 - sensorRaw[index]) * 1000UL) / 4095;
+        }
+    }
 
     uint16_t raw = sensorRaw[index];
     uint16_t mn = minValues[index];
@@ -157,14 +163,7 @@ uint16_t sensor_get_calibrated(uint8_t index) {
 
 bool sensor_is_black(uint8_t index) {
     if (index >= N_SENSORS) return false;
-    uint16_t raw = sensorRaw[index];
-    uint16_t th = thresholds[index];
-
-    if (s_global_black_is_higher) {
-        return (raw >= th);
-    } else {
-        return (raw <= th);
-    }
+    return (sensor_get_calibrated(index) >= 500);
 }
 
 uint16_t sensor_get_line_bits(void) {

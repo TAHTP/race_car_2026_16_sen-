@@ -155,11 +155,20 @@ class RxCallbacks : public BLECharacteristicCallbacks {
             uint8_t m = rxValue.substring(12).toInt();
             ble_send_map_data(m);
         }
+        else if (rxValue == "CMD:POLARITY:TOGGLE") {
+            bool cur = sensor_get_polarity();
+            sensor_set_polarity(!cur);
+            ble_send_string(!cur ? "ACK:POLARITY:HIGHER" : "ACK:POLARITY:LOWER");
+        }
+        else if (rxValue == "CMD:POLARITY:GET") {
+            ble_send_string(sensor_get_polarity() ? "ACK:POLARITY:HIGHER" : "ACK:POLARITY:LOWER");
+        }
     }
 };
 
 void ble_init(const char *device_name) {
     BLEDevice::init(device_name);
+    BLEDevice::setMTU(256);
 
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -208,15 +217,31 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
                         uint16_t sensor_mask) {
     if (!deviceConnected || !pTxCharacteristic) return;
 
-    // Định dạng gói tin CSV siêu nhẹ:
-    // T:<ticks_L>,<ticks_R>,<pos*10>,<pwm_L>,<pwm_R>,<map>,<wp>,<state>,<mask>
-    char buf[80];
+    // Gói tin nhị phân chuẩn 18 bytes (nhỏ hơn MTU 20 bytes của BLE Web Bluetooth):
+    // Byte 0: 0xAA (Header nhận diện Telemetry)
+    // Byte 1..4: ticks_l (int32, little endian)
+    // Byte 5..8: ticks_r (int32, little endian)
+    // Byte 9..10: pos_scaled (int16, pos * 10, little endian)
+    // Byte 11: pwm_l (int8)
+    // Byte 12: pwm_r (int8)
+    // Byte 13..14: sensor_mask (uint16, little endian)
+    // Byte 15: car_state (uint8)
+    // Byte 16: wp_idx (uint8)
+    // Byte 17: map_idx (uint8)
+    uint8_t pkt[18];
+    pkt[0] = 0xAA;
+    memcpy(&pkt[1], &ticks_l, 4);
+    memcpy(&pkt[5], &ticks_r, 4);
     int16_t pos_scaled = (int16_t)roundf(line_pos * 10.0f);
-    snprintf(buf, sizeof(buf), "T:%ld,%ld,%d,%d,%d,%u,%u,%u,%u",
-             (long)ticks_l, (long)ticks_r, pos_scaled,
-             pwm_l, pwm_r, map_idx, wp_idx, car_state, sensor_mask);
+    memcpy(&pkt[9], &pos_scaled, 2);
+    pkt[11] = (int8_t)constrain(pwm_l, -128, 127);
+    pkt[12] = (int8_t)constrain(pwm_r, -128, 127);
+    memcpy(&pkt[13], &sensor_mask, 2);
+    pkt[15] = car_state;
+    pkt[16] = wp_idx;
+    pkt[17] = map_idx;
 
-    pTxCharacteristic->setValue((uint8_t*)buf, strlen(buf));
+    pTxCharacteristic->setValue(pkt, sizeof(pkt));
     pTxCharacteristic->notify();
 }
 
