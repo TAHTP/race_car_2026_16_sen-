@@ -66,6 +66,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         if (rxValue.length() == 0) return;
 
         rxValue.trim();
+        Serial.printf(">> 📥 [WEB LỆNH]: %s\n", rxValue.c_str());
 
         // 1. Lệnh điều khiển chạy
         if (rxValue == "CMD:SCAN") {
@@ -170,6 +171,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 
 void ble_init(const char *device_name) {
     BLEDevice::init(device_name);
+    BLEDevice::setMTU(256);
 
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -209,7 +211,9 @@ void ble_send_string(const char *str) {
     if (deviceConnected && pTxCharacteristic) {
         pTxCharacteristic->setValue((uint8_t*)str, strlen(str));
         pTxCharacteristic->notify();
+        delay(5);
     }
+    Serial.printf(">> 📤 [BLE PHẢN HỒI]: %s\n", str);
 }
 
 void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos, 
@@ -219,15 +223,16 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
     if (!deviceConnected || !pTxCharacteristic) return;
 
     // Định dạng gói tin CSV chuẩn Web:
-    // T:<ticks_L>,<ticks_R>,<pos*10>,<pwm_L>,<pwm_R>,<map>,<wp>,<state>,<mask>
+    // T:<ticks_L>,<ticks_R>,<pos*10>,<pwm_L>,<pwm_R>,<map>,<wp>,<state>,<mask_int>
     char buf[96];
     int16_t pos_scaled = (int16_t)roundf(line_pos * 10.0f);
     snprintf(buf, sizeof(buf), "T:%ld,%ld,%d,%d,%d,%u,%u,%u,%u",
              (long)ticks_l, (long)ticks_r, pos_scaled,
-             pwm_l, pwm_r, map_idx, wp_idx, car_state, sensor_mask);
+             pwm_l, pwm_r, map_idx, wp_idx, car_state, (unsigned int)sensor_mask);
 
     pTxCharacteristic->setValue((uint8_t*)buf, strlen(buf));
     pTxCharacteristic->notify();
+    delay(5);
 
     // In Serial mỗi 500ms để kiểm tra tận mắt dữ liệu gửi lên Web
     static uint32_t s_last_dbg = 0;

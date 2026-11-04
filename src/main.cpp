@@ -53,7 +53,16 @@ void controlTask(void *pvParameters) {
 
         // 2. Chế độ bám line tự động
         CarRunMode_t mode = car_get_run_mode();
+        static bool s_was_running = false;
+        static uint64_t s_race_start_us = 0;
+
         if (mode != CAR_MODE_STOP && calibrationReady) {
+            if (!s_was_running) {
+                s_was_running = true;
+                s_race_start_us = esp_timer_get_time();
+                ble_send_string("LOG:AUTO_START");
+            }
+
             // Lấy số xung trung bình 2 bánh để định vị trên sa bàn
             int64_t ticks_l = encoder_get_ticks_L();
             int64_t ticks_r = encoder_get_ticks_R();
@@ -72,8 +81,14 @@ void controlTask(void *pvParameters) {
 
                 // Nếu chạm vạch ngang đích (có >= 13 mắt đen sau khi đã chạy > 1500 xung) -> Tự dừng và báo Web
                 if (total_black >= 13 && avg_ticks > 1500) {
+                    float elapsed = (float)(esp_timer_get_time() - s_race_start_us) / 1000000.0f;
+                    char lapMsg[48];
+                    snprintf(lapMsg, sizeof(lapMsg), "LOG:RACE_FINISH:%.3f", elapsed);
+                    ble_send_string(lapMsg);
+
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
+                    s_was_running = false;
                     ble_send_string("ACK:SCAN_FINISHED");
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
@@ -84,10 +99,16 @@ void controlTask(void *pvParameters) {
 
                 // Chỉ dừng khi mốc sa bàn là ACTION_BRAKE_STOP hoặc chạm vạch ngang đích ở mốc cuối
                 if (act == ACTION_BRAKE_STOP || (total_black >= 13 && avg_ticks > 1000 && wp_idx >= map_get_waypoint_count(map_get_selected()) - 1)) {
+                    float elapsed = (float)(esp_timer_get_time() - s_race_start_us) / 1000000.0f;
+                    char lapMsg[48];
+                    snprintf(lapMsg, sizeof(lapMsg), "LOG:RACE_FINISH:%.3f", elapsed);
+                    ble_send_string(lapMsg);
+
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
+                    s_was_running = false;
                     ble_send_string("ACK:FINISH_STOPPED");
-                    Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phanh dừng tại mốc %u (%u xung)\n", wp_idx, avg_ticks);
+                    Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phanh dừng tại mốc %u (%u xung, %.3fs)\n", wp_idx, avg_ticks, elapsed);
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
@@ -105,6 +126,7 @@ void controlTask(void *pvParameters) {
             pid_line_follow_step();
         } else {
             // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
+            s_was_running = false;
             motor_stop();
         }
 
@@ -112,13 +134,13 @@ void controlTask(void *pvParameters) {
     }
 }
 
-// =========================================================================
+// ================================================================
 // CORE 0: TASK BLE & TRUYỀN THÔNG WEB (Chạy ngầm ở Core 0)
-// =========================================================================
+// ================================================================
 void bleTask(void *pvParameters) {
     static uint32_t s_last_wait_log = 0;
     for (;;) {
-        // Bắn dữ liệu Telemetry về Web mỗi 60ms
+        // Bắn dữ liệu Telemetry về Web mỗi 150ms (chuẩn nhịp mượt theo bản tham khảo)
         if (ble_is_connected()) {
             int32_t tl = (int32_t)encoder_get_ticks_L();
             int32_t tr = (int32_t)encoder_get_ticks_R();
@@ -138,7 +160,7 @@ void bleTask(void *pvParameters) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(60)); // 60ms/lần (~16Hz) rất mượt cho Web
+        vTaskDelay(pdMS_TO_TICKS(150)); // 150ms/lần (~7Hz) cực kỳ thông thoáng và không nghẽn BLE
     }
 }
 
