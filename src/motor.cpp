@@ -46,6 +46,15 @@ void motor_stop(void) {
     motor_set_speeds(0, 0);
 }
 
+void motor_coast(void) {
+    s_speed_L = 0;
+    s_speed_R = 0;
+    ledcWrite(IN_L1, 0);
+    ledcWrite(IN_L2, 0);
+    ledcWrite(IN_R1, 0);
+    ledcWrite(IN_R2, 0);
+}
+
 void motor_set_speeds(int16_t left, int16_t right) {
     s_speed_L = left;
     s_speed_R = right;

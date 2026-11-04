@@ -9,9 +9,10 @@ extern "C" {
 #endif
 
 typedef enum {
-    CAR_MODE_STOP = 0,
-    CAR_MODE_SCAN = 1,  // Lượt 1: Bò chậm lấy mốc sa bàn (baseSpeed 70)
-    CAR_MODE_RACE = 2   // Lượt 2: Bung tốc độ thi đấu theo bảng mốc xung
+    CAR_MODE_STOP  = 0,
+    CAR_MODE_SCAN  = 1,  // Lượt 1: Bò chậm lấy mốc sa bàn (baseSpeed 70)
+    CAR_MODE_RACE  = 2,  // Lượt 2: Bung tốc độ thi đấu theo bảng mốc xung
+    CAR_MODE_ALIGN = 3   // Tự căn tâm khóa vạch 0 độ tại chỗ sau khi Calib (Zero-Base Speed)
 } CarRunMode_t;
 
 // Khởi tạo BLE Server trên Core 0

@@ -27,6 +27,8 @@ void car_set_run_mode(CarRunMode_t mode) {
     if (mode == CAR_MODE_STOP) {
         pid_set_auto_mode(false);
         motor_stop();
+    } else if (mode == CAR_MODE_ALIGN) {
+        pid_set_auto_mode(false); // Ở chế độ căn tâm, controlTask trực tiếp điều khiển lực xoay nhẹ quanh tâm
     } else {
         // KHÔNG reset xung ở đây! Xung chỉ reset khi người dùng bấm nút CMD:RESET_ENC
         pid_set_auto_mode(true);

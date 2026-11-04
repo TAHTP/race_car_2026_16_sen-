@@ -41,7 +41,8 @@ void controlTask(void *pvParameters) {
         } else if (was_calibrating) {
             was_calibrating = false;
             ble_send_string("ACK:CALIB_DONE");
-            Serial.println(">> ✅ [CALIB XONG] Đã lưu ngưỡng và sẵn sàng!");
+            Serial.println(">> ✅ [CALIB XONG] Đã lưu ngưỡng và tự động vào chế độ CĂN TÂM (V_base = 0)!");
+            car_set_run_mode(CAR_MODE_ALIGN);
         }
 
         // LUÔN ĐỌC VÀ TÍNH TOÁN CẢM BIẾN REAL-TIME - KỂ CẢ KHI XE ĐANG ĐỨNG YÊN!
@@ -51,12 +52,55 @@ void controlTask(void *pvParameters) {
         pid_calculate_position(&cur_pos, &cur_black_cnt);
         s_live_line_pos = cur_pos; // CẬP NHẬT TỌA ĐỘ VẠCH REAL-TIME LIÊN TỤC 500HZ!
 
-        // 2. Chế độ bám line tự động
         CarRunMode_t mode = car_get_run_mode();
         static bool s_was_running = false;
         static uint64_t s_race_start_us = 0;
+        static uint32_t s_align_start = 0;
 
-        if (mode != CAR_MODE_STOP && calibrationReady) {
+        // 2. CHẾ ĐỘ CĂN TÂM TẠI CHỖ (Zero-Base Speed Pivot Alignment)
+        if (mode == CAR_MODE_ALIGN && calibrationReady) {
+            if (s_align_start == 0) s_align_start = millis();
+
+            // An toàn 1: Hẹn giờ 20 giây tự chuyển về STOP để bảo vệ pin và động cơ
+            if (millis() - s_align_start > 20000) {
+                car_set_run_mode(CAR_MODE_STOP);
+                s_align_start = 0;
+                motor_coast();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
+            // An toàn 2: Nhấc bổng xe (0 mắt đen) -> Thả trôi motor tự do (PWM = 0), không quay tít trên không!
+            if (cur_black_cnt == 0) {
+                motor_coast();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
+            // An toàn 3: Đã ở tim vạch (|cur_pos| < 5.0) -> Thả trôi, kéo tiến/lùi dọc vạch hoàn toàn tự do!
+            if (fabsf(cur_pos) < 5.0f) {
+                motor_coast();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
+            // Lệch góc (|cur_pos| >= 5.0): Tự động xoay nhẹ nhàng đưa đầu xe về tim vạch
+            // Lực xoay tỉ lệ theo sai số, tối đa 42 PWM (cực nhẹ dịu, không giằng tay người)
+            float turn_p = cur_pos * 1.5f;
+            int16_t align_pwm = (int16_t)constrain(turn_p, -42.0f, 42.0f);
+            if (align_pwm > 0 && align_pwm < 36) align_pwm = 36;
+            else if (align_pwm < 0 && align_pwm > -36) align_pwm = -36;
+
+            motor_set_speeds(-align_pwm, align_pwm);
+
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        } else {
+            s_align_start = 0;
+        }
+
+        // 3. Chế độ bám line tự động (Quét map hoặc Chạy đua)
+        if ((mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) && calibrationReady) {
             if (!s_was_running) {
                 s_was_running = true;
                 s_race_start_us = esp_timer_get_time();
@@ -237,7 +281,7 @@ void loop() {
             } else {
                 // Đã calib -> Bật / Tắt chạy đua
                 CarRunMode_t cur = car_get_run_mode();
-                if (cur == CAR_MODE_STOP) {
+                if (cur == CAR_MODE_STOP || cur == CAR_MODE_ALIGN) {
                     car_set_run_mode(CAR_MODE_RACE);
                     Serial.println(">> [NÚT 35] BUNG TỐC ĐỘ ĐUA: BẬT <<");
                 } else {

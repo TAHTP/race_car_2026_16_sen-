@@ -19,6 +19,11 @@ void motor_init(void);
 void motor_stop(void);
 
 /**
+ * @brief Thả trôi tự do cả hai động cơ (Coast mode / Freewheel, bánh xe lăn trơn)
+ */
+void motor_coast(void);
+
+/**
  * @brief Điều khiển tốc độ độc lập cho từng động cơ
  * @param left Tốc độ động cơ trái (-255 đến 255, Dương: Tiến, Âm: Lùi, 0: Phanh)
  * @param right Tốc độ động cơ phải (-255 đến 255, Dương: Tiến, Âm: Lùi, 0: Phanh)
