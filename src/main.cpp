@@ -116,6 +116,7 @@ void controlTask(void *pvParameters) {
 // CORE 0: TASK BLE & TRUYỀN THÔNG WEB (Chạy ngầm ở Core 0)
 // =========================================================================
 void bleTask(void *pvParameters) {
+    uint8_t sen_div = 0;
     for (;;) {
         // Bắn dữ liệu Telemetry về Web mỗi 60ms
         if (ble_is_connected()) {
@@ -128,7 +129,15 @@ void bleTask(void *pvParameters) {
             uint8_t state = (uint8_t)car_get_run_mode();
             uint16_t mask = sensor_get_line_bits();
 
+            // Gói 1: Tọa độ, Xung, PWM và Mask 16 mắt (T:)
             ble_send_telemetry(tl, tr, pos, ml, mr, m_idx, s_active_wp_idx, state, mask);
+
+            // Gói 2: Bắn giá trị % chi tiết từng mắt (SEN:) xen kẽ mỗi 120ms
+            if (++sen_div >= 2) {
+                sen_div = 0;
+                vTaskDelay(pdMS_TO_TICKS(15));
+                ble_send_sensor_pct();
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(60)); // 60ms/lần (~16Hz) rất mượt cho Web

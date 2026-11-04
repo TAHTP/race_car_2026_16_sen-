@@ -147,24 +147,27 @@
         }
 
         .sensor-box {
-            height: 26px;
+            height: 38px;
             background: #090d16;
             border: 1px solid #1e293b;
-            border-radius: 3px;
+            border-radius: 4px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             font-size: 0.55rem;
             font-weight: 800;
             color: #475569;
-            transition: background 0.05s, box-shadow 0.05s;
+            transition: background 0.05s, box-shadow 0.05s, border-color 0.05s;
+            padding: 2px 0;
+            overflow: hidden;
         }
 
         .sensor-box.active {
-            background: var(--accent-cyan);
-            color: #000;
-            border-color: #fff;
-            box-shadow: 0 0 8px var(--accent-cyan);
+            background: rgba(0, 240, 255, 0.25);
+            color: #fff;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
         }
 
         /* THƯỚC NGẮM */
@@ -470,9 +473,15 @@
         </div>
 
         <div class="tab-bar">
-            <button class="tab-btn active" id="tab0" onclick="switchMap(0)">MAP 1</button>
-            <button class="tab-btn" id="tab1" onclick="switchMap(1)">MAP 2</button>
+            <button class="tab-btn active" id="tab0" onclick="switchMap(0)">MAP 1 (PID THUẦN)</button>
+            <button class="tab-btn" id="tab1" onclick="switchMap(1)">MAP 2 (THI ĐẤU)</button>
             <button class="tab-btn" id="tab2" onclick="switchMap(2)">MAP 3</button>
+        </div>
+
+        <!-- NÚT CHỌN LÀN ĐỐI XỨNG (LÀN TRÁI / LÀN PHẢI) -->
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <button id="btnLaneLeft" style="flex: 1; padding: 8px 4px; font-weight: 800; font-size: 0.8rem; border-radius: 8px; border: 1.5px solid var(--accent-cyan); background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); cursor: pointer; transition: all 0.2s;" onclick="setLane(false)">🏁 LÀN TRÁI</button>
+            <button id="btnLaneRight" style="flex: 1; padding: 8px 4px; font-weight: 800; font-size: 0.8rem; border-radius: 8px; border: 1.5px solid var(--card-border); background: var(--card-bg); color: var(--text-dim); cursor: pointer; transition: all 0.2s;" onclick="setLane(true)">🏁 LÀN PHẢI (MIRROR)</button>
         </div>
 
         <div style="overflow-x: auto;">
@@ -526,7 +535,7 @@
             const b = document.createElement('div');
             b.id = `sen_${i}`;
             b.className = 'sensor-box';
-            b.innerText = i;
+            b.innerHTML = `<span style="font-size:0.5rem; opacity:0.6; line-height:1;">${i}</span><span id="sen_val_${i}" style="font-size:0.55rem; font-weight:800; color:#94a3b8; line-height:1; margin-top:3px;">0%</span>`;
             row.appendChild(b);
         }
 
@@ -605,61 +614,8 @@
 
         // ================= TELEMETRY RECEIVE =================
         function onTelemetry(event) {
-            const val = event.target.value; // DataView
-
-            // 1. NHẬN GÓI BINARY TELEMETRY 18-BYTE (Header 0xAA) - CHỐNG NGHẼN MTU 20 BYTES
-            if (val.byteLength >= 18 && val.getUint8(0) === 0xAA) {
-                const tl = val.getInt32(1, true); // true = Little Endian
-                const tr = val.getInt32(5, true);
-                const pos = val.getInt16(9, true) / 10.0;
-                const ml = val.getInt8(11);
-                const mr = val.getInt8(12);
-                const mask = val.getUint16(13, true);
-                const state = val.getUint8(15);
-                const wp = val.getUint8(16);
-                const mapIdx = val.getUint8(17);
-
-                lastLiveTicks = Math.round((Math.abs(tl) + Math.abs(tr)) / 2);
-
-                document.getElementById('txtTicksL').innerText = tl;
-                document.getElementById('txtTicksR').innerText = tr;
-                document.getElementById('txtPwmL').innerText = ml;
-                document.getElementById('txtPwmR').innerText = mr;
-                document.getElementById('posValue').innerText = `TÂM: ${pos.toFixed(1)}`;
-
-                // Cập nhật trạng thái xe
-                let st = 'STOPPED';
-                if (state === 1) st = '🐢 QUÉT MAP...';
-                else if (state === 2) st = '🚀 ĐUA BUNG GA!';
-                document.getElementById('carStateBadge').innerText = st;
-
-                // Thước ngắm tâm line
-                const pct = Math.min(Math.max(((pos + 75.0) / 150.0) * 100, 4), 96);
-                document.getElementById('gaugeDot').style.left = `${pct}%`;
-
-                // Cập nhật 16 ô cảm biến real-time
-                let blk = 0;
-                for (let i = 0; i < 16; i++) {
-                    const on = (mask & (1 << i)) !== 0;
-                    const el = document.getElementById(`sen_${i}`);
-                    if (el) {
-                        if (on) {
-                            el.classList.add('active');
-                            el.innerText = '#';
-                        } else {
-                            el.classList.remove('active');
-                            el.innerText = i;
-                        }
-                    }
-                    if (on) blk++;
-                }
-                document.getElementById('blackCountBadge').innerText = `${blk}/16 ĐEN`;
-                return;
-            }
-
-            // 2. FALLBACK XỬ LÝ CHUỖI VĂN BẢN (ACK, MAP_INFO, WP,...)
             const dec = new TextDecoder();
-            const raw = dec.decode(val).trim();
+            const raw = dec.decode(event.target.value).trim();
 
             if (raw.startsWith('T:')) {
                 // T:tl,tr,pos*10,pwm_l,pwm_r,map,wp,state,mask
@@ -679,7 +635,12 @@
                     document.getElementById('txtTicksR').innerText = tr;
                     document.getElementById('txtPwmL').innerText = ml;
                     document.getElementById('txtPwmR').innerText = mr;
-                    document.getElementById('posValue').innerText = `TÂM: ${pos.toFixed(1)}`;
+
+                    // Hiển thị Error và hướng lệch tâm trực quan
+                    let dirText = 'CHUẨN TÂM';
+                    if (pos < -2.0) dirText = `LỆCH TRÁI (${pos.toFixed(1)})`;
+                    else if (pos > 2.0) dirText = `LỆCH PHẢI (+${pos.toFixed(1)})`;
+                    document.getElementById('posValue').innerText = `ERR: ${pos.toFixed(1)} [${dirText}]`;
 
                     // Cập nhật trạng thái
                     let st = 'STOPPED';
@@ -699,15 +660,28 @@
                         if (el) {
                             if (on) {
                                 el.classList.add('active');
-                                el.innerText = '#';
                             } else {
                                 el.classList.remove('active');
-                                el.innerText = i;
                             }
                         }
                         if (on) blk++;
                     }
                     document.getElementById('blackCountBadge').innerText = `${blk}/16 ĐEN`;
+                }
+            } else if (raw.startsWith('SEN:')) {
+                // Gói tin chi tiết giá trị từng mắt (% từ 0..100)
+                const vals = raw.substring(4).split(',');
+                if (vals.length >= 16) {
+                    for (let i = 0; i < 16; i++) {
+                        const v = parseInt(vals[i]) || 0;
+                        const vEl = document.getElementById(`sen_val_${i}`);
+                        if (vEl) {
+                            vEl.innerText = `${v}%`;
+                            if (v >= 50) vEl.style.color = '#00f0ff';
+                            else if (v >= 20) vEl.style.color = '#facc15';
+                            else vEl.style.color = '#94a3b8';
+                        }
+                    }
                 }
             } else if (raw.startsWith('ACK:')) {
                 log('📥 ' + raw);
@@ -715,6 +689,10 @@
                     finishCalibUI();
                 } else if (raw === 'ACK:PID_UPDATED') {
                     onPIDUpdatedFeedback();
+                } else if (raw === 'ACK:LANE_RIGHT') {
+                    log('✅ Xe xác nhận: LÀN PHẢI (Mirror)');
+                } else if (raw === 'ACK:LANE_LEFT') {
+                    log('✅ Xe xác nhận: LÀN TRÁI');
                 } else if (raw === 'ACK:SCAN_FINISHED' || raw === 'ACK:FINISH_STOPPED') {
                     log('🏁 Xe đã chạm đích! Dừng tại: ' + lastLiveTicks + ' xung');
                     alert('🏁 [VẠCH ĐÍCH] Xe phát hiện vạch ngang đích (>= 13 mắt đen)!\nTổng quãng đường: ' + lastLiveTicks + ' xung.\nXe đã phanh dừng an toàn.');
@@ -823,6 +801,32 @@
                     btn.style.transform = '';
                     btn.innerText = '📤 NẠP PID XUỐNG XE';
                 }, 1500);
+            }
+        }
+
+        // ================= CHỌN LÀN THI ĐẤU (ĐỐI XỨNG MIRROR) =================
+        function setLane(isRight) {
+            isRightLane = isRight;
+            const bL = document.getElementById('btnLaneLeft');
+            const bR = document.getElementById('btnLaneRight');
+            if (isRight) {
+                bR.style.borderColor = 'var(--accent-cyan)';
+                bR.style.background = 'rgba(0, 240, 255, 0.15)';
+                bR.style.color = 'var(--accent-cyan)';
+                bL.style.borderColor = 'var(--card-border)';
+                bL.style.background = 'var(--card-bg)';
+                bL.style.color = 'var(--text-dim)';
+                sendCmd('CMD:LANE:1');
+                log('🏁 Đã chọn: LÀN PHẢI (Đối xứng Mirror)');
+            } else {
+                bL.style.borderColor = 'var(--accent-cyan)';
+                bL.style.background = 'rgba(0, 240, 255, 0.15)';
+                bL.style.color = 'var(--accent-cyan)';
+                bR.style.borderColor = 'var(--card-border)';
+                bR.style.background = 'var(--card-bg)';
+                bR.style.color = 'var(--text-dim)';
+                sendCmd('CMD:LANE:0');
+                log('🏁 Đã chọn: LÀN TRÁI');
             }
         }
 
