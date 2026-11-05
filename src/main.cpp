@@ -12,7 +12,7 @@ static volatile bool s_run_requested = false;
 static volatile float s_live_line_pos = 0.0f; // Vị trí tim line thời gian thực (luôn cập nhật 500Hz)
 static uint8_t s_active_wp_idx = 0;
 static uint8_t s_active_action = 0;
-static int16_t s_active_speed = 100;
+static int16_t s_active_speed = 120;
 
 // Task handle
 static TaskHandle_t s_control_task_handle = NULL;
@@ -53,7 +53,7 @@ void controlTask(void *pvParameters) {
         s_live_line_pos = cur_pos; // CẬP NHẬT TỌA ĐỘ VẠCH REAL-TIME LIÊN TỤC 500HZ!
 
         CarRunMode_t mode = car_get_run_mode();
-        static bool s_was_running = false;
+        static CarRunMode_t s_prev_mode = CAR_MODE_STOP;
         static uint64_t s_race_start_us = 0;
         static uint32_t s_align_start = 0;
         static uint8_t s_finish_debounce = 0;
@@ -106,19 +106,29 @@ void controlTask(void *pvParameters) {
             s_align_start = 0;
         }
 
-        // 3. Chế độ bám line tự động (Quét map hoặc Chạy đua)
-        if ((mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) && calibrationReady) {
-            if (!s_was_running) {
-                s_was_running = true;
-                s_race_start_us = esp_timer_get_time();
-                encoder_reset(); // Đảm bảo số xung luôn xuất phát từ đúng 0 khi bắt đầu chạy
-                pid_set_sector_action(ACTION_NORMAL);
-                s_active_wp_idx = 0;
-                s_active_action = ACTION_NORMAL;
-                s_finish_debounce = 0;
-                ble_send_string("LOG:AUTO_START");
-            }
+        // 3. Quản lý chuyển Mode an toàn (State Transition gác cổng):
+        // Bất cứ khi nào đổi mode (STOP -> CHẠY, 1 -> 2, 2 -> 1, hoặc CHẠY -> STOP):
+        // Luôn dọn dẹp biến, reset xung và đồng bộ trạng thái sạch sẽ tuyệt đối
+        if (mode != s_prev_mode) {
+            s_prev_mode = mode;
+            encoder_reset();
+            pid_set_sector_action(ACTION_NORMAL);
+            s_active_wp_idx = 0;
+            s_active_action = ACTION_NORMAL;
+            s_finish_debounce = 0;
 
+            if (mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) {
+                pid_set_auto_mode(true);
+                s_race_start_us = esp_timer_get_time();
+                ble_send_string("LOG:AUTO_START");
+            } else {
+                pid_set_auto_mode(false);
+                motor_stop();
+            }
+        }
+
+        // 4. Chế độ bám line tự động (Quét map hoặc Chạy đua)
+        if ((mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) && calibrationReady) {
             // Lấy số xung trung bình 2 bánh và quãng đường để định vị trên sa bàn
             int64_t ticks_l = encoder_get_ticks_L();
             int64_t ticks_r = encoder_get_ticks_R();
@@ -164,7 +174,7 @@ void controlTask(void *pvParameters) {
                     s_active_action = ACTION_NORMAL;
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
-                    s_was_running = false;
+                    s_prev_mode = CAR_MODE_STOP;
                     ble_send_string("ACK:SCAN_FINISHED");
                     Serial.printf(">> 🏁 [VẠCH ĐÍCH] Quét map hoàn tất tại %.1f mm (%u xung, %.3fs)\n", dist_avg_mm, avg_ticks, elapsed);
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -195,7 +205,7 @@ void controlTask(void *pvParameters) {
                     s_active_action = ACTION_NORMAL;
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
-                    s_was_running = false;
+                    s_prev_mode = CAR_MODE_STOP;
                     ble_send_string("ACK:FINISH_STOPPED");
                     Serial.printf(">> 🏁 [VẠCH ĐÍCH] Phanh dừng tại mốc %u (%.1f mm, %u xung, %.3fs)\n", wp_idx, dist_avg_mm, avg_ticks, elapsed);
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -215,7 +225,6 @@ void controlTask(void *pvParameters) {
             pid_line_follow_step();
         } else {
             // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
-            s_was_running = false;
             s_finish_debounce = 0;
             pid_set_sector_action(ACTION_NORMAL);
             s_active_wp_idx = 0;
@@ -272,8 +281,8 @@ void setup() {
     encoder_init();
     map_manager_init();
 
-    // 3. Khởi tạo bộ điều khiển PID (Kp=2.2, Ki=0.0, Kd=10.0, baseSpeed=100)
-    pid_init(2.2f, 0.0f, 10.0f, 100);
+    // 3. Khởi tạo bộ điều khiển PID (Kp=4.0, Ki=0.0, Kd=20.0, baseSpeed=120)
+    pid_init(4.0f, 0.0f, 20.0f, 120);
 
     // 4. Khởi tạo BLE Server với tên nhận diện
     ble_init("RACECAR_16SEN");

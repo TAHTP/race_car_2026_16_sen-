@@ -20,7 +20,7 @@ static BLECharacteristic *pTxCharacteristic = NULL;
 static bool deviceConnected = false;
 static bool oldDeviceConnected = false;
 static CarRunMode_t s_car_mode = CAR_MODE_STOP;
-static int16_t s_scan_speed = 110; // Tốc độ quét mặc định tăng lên 110 để xe lăn bánh khỏe khoắn
+static int16_t s_scan_speed = 120; // Tốc độ quét mặc định chuẩn thi đấu 120
 
 void car_set_run_mode(CarRunMode_t mode) {
     s_car_mode = mode;

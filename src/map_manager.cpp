@@ -1,4 +1,5 @@
 #include "map_manager.h"
+#include "ble_handler.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -137,7 +138,7 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
     MapProfile_t *prof = &s_maps[s_selected_map];
 
     if (prof->count == 0) {
-        *out_speed = 100;
+        *out_speed = car_get_scan_speed();
         *out_action = ACTION_NORMAL;
         *out_wp_idx = 0;
         return;

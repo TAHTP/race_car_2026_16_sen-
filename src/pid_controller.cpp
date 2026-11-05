@@ -12,12 +12,12 @@ static const float SENSOR_WEIGHTS[N_SENSORS] = {
       5.0f,  15.0f,  25.0f,  35.0f,  45.0f,  55.0f,  65.0f,  75.0f  // 8 mắt phải (8..15)
 };
 
-// Cấu hình PID chuẩn: Kp=2.2, Ki=0.0, Kd=10.0, baseSpeed=100
+// Cấu hình PID chuẩn: Kp=4.0, Ki=0.0, Kd=20.0, baseSpeed=120
 static PID_Config_t pidConfig = {
-    .Kp = 2.2f,
+    .Kp = 4.0f,
     .Ki = 0.0f,
-    .Kd = 10.0f,
-    .baseSpeed = 100,
+    .Kd = 20.0f,
+    .baseSpeed = 120,
     .maxSpeed = 220,
     .minSpeed = -115,
     .turnSpeed = 130
