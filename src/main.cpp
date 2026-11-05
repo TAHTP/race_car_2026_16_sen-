@@ -78,21 +78,27 @@ void controlTask(void *pvParameters) {
                 continue;
             }
 
-            // An toàn 3: Đã ở tim vạch (|cur_pos| < 5.0) -> Thả trôi, kéo tiến/lùi dọc vạch hoàn toàn tự do!
-            if (fabsf(cur_pos) < 5.0f) {
+            // An toàn 3: Đã ở tim vạch (|cur_pos| < 6.0) -> Thả trôi, kéo tiến/lùi dọc vạch hoàn toàn tự do!
+            if (fabsf(cur_pos) < 6.0f) {
                 motor_coast();
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
 
-            // Lệch góc (|cur_pos| >= 5.0): Tự động xoay nhẹ nhàng đưa đầu xe về tim vạch
-            // Lực xoay tỉ lệ theo sai số, tối đa 42 PWM (cực nhẹ dịu, không giằng tay người)
-            float turn_p = cur_pos * 1.5f;
-            int16_t align_pwm = (int16_t)constrain(turn_p, -42.0f, 42.0f);
-            if (align_pwm > 0 && align_pwm < 36) align_pwm = 36;
-            else if (align_pwm < 0 && align_pwm > -36) align_pwm = -36;
+            // Lệch góc (|cur_pos| >= 6.0): Tự động xoay vặn đầu xe về tim vạch
+            // Dải PWM mạnh mẽ (Min 78 - Max 110, gấp đôi bản cũ) để thắng hoàn toàn ma sát tĩnh của lốp xe
+            float err = fabsf(cur_pos);
+            int16_t pwm_mag = 78 + (int16_t)((err - 6.0f) * 0.9f);
+            if (pwm_mag > 110) pwm_mag = 110;
 
-            motor_set_speeds(-align_pwm, align_pwm);
+            // Hướng xoay:
+            // cur_pos > 0: Vạch ở bên phải -> Bánh trái tiến (+), bánh phải lùi (-) để xoay phải
+            // cur_pos < 0: Vạch ở bên trái -> Bánh trái lùi (-), bánh phải tiến (+) để xoay trái
+            if (cur_pos > 0.0f) {
+                motor_set_speeds(pwm_mag, -pwm_mag);
+            } else {
+                motor_set_speeds(-pwm_mag, pwm_mag);
+            }
 
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
