@@ -111,6 +111,7 @@ void controlTask(void *pvParameters) {
             if (!s_was_running) {
                 s_was_running = true;
                 s_race_start_us = esp_timer_get_time();
+                encoder_reset(); // Đảm bảo số xung luôn xuất phát từ đúng 0 khi bắt đầu chạy
                 ble_send_string("LOG:AUTO_START");
             }
 

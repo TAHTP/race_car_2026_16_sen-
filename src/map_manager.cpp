@@ -161,8 +161,9 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
         }
     }
 
-    // Nếu đã chạy vượt qua mốc cuối cùng -> Phanh dừng
-    *out_speed = 0;
-    *out_action = ACTION_BRAKE_STOP;
-    *out_wp_idx = prof->count - 1;
+    // Nếu đã chạy vượt qua mốc cuối cùng -> Tiếp tục chạy PID thuần với tốc độ của mốc cuối, KHÔNG TỰ DỪNG!
+    // Xe sẽ tiếp tục bám line và tự bẻ góc vuông y hệt Mode 1 cho đến khi chạm vạch đích thật sự!
+    *out_speed = prof->wps[prof->count - 1].target_speed;
+    *out_action = ACTION_NORMAL;
+    *out_wp_idx = prof->count;
 }

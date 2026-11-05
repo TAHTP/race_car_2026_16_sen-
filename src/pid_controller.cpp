@@ -254,6 +254,9 @@ void pid_line_follow_step(void) {
     // Nếu sa bàn yêu cầu khóa thẳng phóng qua vạch đứt
     if (s_sector_action == 3) {
         motor_set_speeds(pidConfig.baseSpeed, pidConfig.baseSpeed);
+        lastComputeTime = millis();
+        lastError = 0.0f;
+        integralError = 0.0f;
         return;
     }
     // Nếu sa bàn yêu cầu phanh chốt đích
