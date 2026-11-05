@@ -26,12 +26,15 @@ void car_set_run_mode(CarRunMode_t mode) {
     s_car_mode = mode;
     if (mode == CAR_MODE_STOP) {
         pid_set_auto_mode(false);
+        pid_set_sector_action(ACTION_NORMAL);
         motor_stop();
     } else if (mode == CAR_MODE_ALIGN) {
         pid_set_auto_mode(false); // Ở chế độ căn tâm, controlTask trực tiếp điều khiển lực xoay nhẹ quanh tâm
+        pid_set_sector_action(ACTION_NORMAL);
     } else {
-        // KHÔNG reset xung ở đây! Xung chỉ reset khi người dùng bấm nút CMD:RESET_ENC
+        // KHÔNG reset xung ở đây! Xung chỉ reset khi người dùng bấm nút CMD:RESET_ENC hoặc khi xuất phát
         pid_set_auto_mode(true);
+        pid_set_sector_action(ACTION_NORMAL);
     }
 }
 
@@ -94,6 +97,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         }
         else if (rxValue == "CMD:RESET_ENC") {
             encoder_reset();
+            pid_set_sector_action(ACTION_NORMAL);
             ble_send_string("ACK:ENC_RESET");
         }
         else if (rxValue.startsWith("CMD:PID:")) {

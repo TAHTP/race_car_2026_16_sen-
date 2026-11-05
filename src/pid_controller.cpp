@@ -100,6 +100,7 @@ void pid_set_auto_mode(bool enable) {
     lastKnownPosition = 0.0f;
     s_corner_latch = 0;
     s_corner_latch_time = 0;
+    s_sector_action = 0;
     if (!autoMode) {
         currentCase = LINE_CASE_STOPPED;
         s_ramped_base = 0.0f;

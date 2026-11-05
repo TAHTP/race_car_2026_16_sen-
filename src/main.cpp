@@ -112,6 +112,10 @@ void controlTask(void *pvParameters) {
                 s_was_running = true;
                 s_race_start_us = esp_timer_get_time();
                 encoder_reset(); // Đảm bảo số xung luôn xuất phát từ đúng 0 khi bắt đầu chạy
+                pid_set_sector_action(ACTION_NORMAL);
+                s_active_wp_idx = 0;
+                s_active_action = ACTION_NORMAL;
+                s_finish_debounce = 0;
                 ble_send_string("LOG:AUTO_START");
             }
 
@@ -155,6 +159,9 @@ void controlTask(void *pvParameters) {
                     snprintf(lapMsg, sizeof(lapMsg), "LOG:RACE_FINISH:%.3f", elapsed);
                     ble_send_string(lapMsg);
 
+                    pid_set_sector_action(ACTION_NORMAL);
+                    s_active_wp_idx = 0;
+                    s_active_action = ACTION_NORMAL;
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
                     s_was_running = false;
@@ -183,6 +190,9 @@ void controlTask(void *pvParameters) {
                     snprintf(lapMsg, sizeof(lapMsg), "LOG:RACE_FINISH:%.3f", elapsed);
                     ble_send_string(lapMsg);
 
+                    pid_set_sector_action(ACTION_NORMAL);
+                    s_active_wp_idx = 0;
+                    s_active_action = ACTION_NORMAL;
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
                     s_was_running = false;
@@ -207,6 +217,9 @@ void controlTask(void *pvParameters) {
             // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
             s_was_running = false;
             s_finish_debounce = 0;
+            pid_set_sector_action(ACTION_NORMAL);
+            s_active_wp_idx = 0;
+            s_active_action = ACTION_NORMAL;
             motor_stop();
         }
 
