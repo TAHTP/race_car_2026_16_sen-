@@ -124,12 +124,12 @@ void controlTask(void *pvParameters) {
 
             // Nhận diện vạch đích an toàn 3 lớp (Tương thích thanh cảm biến hơi cong nhẹ ở rìa):
             // 1. Phải chạy tối thiểu 50cm (500mm / ~515 xung) rời vạch xuất phát
-            // 2. Có >= 12 mắt đen (75% dàn mắt - bao trọn cả khi 2 cánh hơi cong nhẹ)
+            // 2. Có >= 14 mắt đen (87.5% dàn mắt - triệt tiêu hoàn toàn ngã 4 đi chéo)
             // 3. Cả 2 cánh ngoài cùng bên Trái (mắt 0..2) và bên Phải (mắt 13..15) đều chạm đen
             bool dist_ok = (dist_avg_mm >= 500.0f || avg_ticks >= 515);
             bool wing_left = (sensor_is_black(0) || sensor_is_black(1) || sensor_is_black(2));
             bool wing_right = (sensor_is_black(13) || sensor_is_black(14) || sensor_is_black(15));
-            bool is_crossline_candidate = dist_ok && (total_black >= 12) && wing_left && wing_right;
+            bool is_crossline_candidate = dist_ok && (total_black >= 14) && wing_left && wing_right;
 
             int16_t tgt_spd = 100;
             uint8_t act = 0;
@@ -141,14 +141,14 @@ void controlTask(void *pvParameters) {
                 act = ACTION_NORMAL;
                 wp_idx = 0;
 
-                // Lọc Debounce vạch đích 3 chu kỳ liên tiếp (6ms) chống nhiễu quang và ngã 3 đi chéo
+                // Lọc Debounce vạch đích 10 chu kỳ liên tiếp (20ms) chống nhiễu quang và ngã 4 đi chéo
                 if (is_crossline_candidate) {
                     s_finish_debounce++;
                 } else {
                     s_finish_debounce = 0;
                 }
 
-                if (s_finish_debounce >= 3) {
+                if (s_finish_debounce >= 10) {
                     s_finish_debounce = 0;
                     float elapsed = (float)(esp_timer_get_time() - s_race_start_us) / 1000000.0f;
                     char lapMsg[48];
@@ -176,7 +176,7 @@ void controlTask(void *pvParameters) {
                     s_finish_debounce = 0;
                 }
 
-                if (s_finish_debounce >= 3) {
+                if (s_finish_debounce >= 10) {
                     s_finish_debounce = 0;
                     float elapsed = (float)(esp_timer_get_time() - s_race_start_us) / 1000000.0f;
                     char lapMsg[48];
