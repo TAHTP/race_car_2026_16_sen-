@@ -211,15 +211,15 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
         uint8_t leftOuter = __builtin_popcount(mask & 0x000F);   // Cụm mắt 0,1,2,3 cực trái
         uint8_t rightOuter = __builtin_popcount(mask & 0xF000);  // Cụm mắt 12,13,14,15 cực phải
 
-        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang, mắt phải hoàn toàn trắng
-        if (leftOuter >= 2 && rightOuter == 0 && (mask & 0x0003) != 0 && totalBlack <= 9) {
+        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang (bắt sớm từ mắt 0..2, cho phép mắt phải nhiễu <= 1)
+        if (leftOuter >= 2 && rightOuter <= 1 && (mask & 0x0007) != 0 && totalBlack <= 9) {
             s_corner_latch = 1;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_LEFT;
         }
 
-        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang, mắt trái hoàn toàn trắng
-        if (rightOuter >= 2 && leftOuter == 0 && (mask & 0xC000) != 0 && totalBlack <= 9) {
+        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang (bắt sớm từ mắt 13..15, cho phép mắt trái nhiễu <= 1)
+        if (rightOuter >= 2 && leftOuter <= 1 && (mask & 0xE000) != 0 && totalBlack <= 9) {
             s_corner_latch = 2;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_RIGHT;
@@ -339,10 +339,14 @@ void pid_line_follow_step(void) {
             if (integralError < -150.0f) integralError = -150.0f;
             float iTerm = pidConfig.Ki * integralError;
 
-            // 3. Khâu D giảm chấn mạnh (Kd = 10.0 triệt tiêu hoàn toàn lắc lư đuôi xe)
+            // 3. Khâu D giảm chấn mạnh, kẹp trần xung (Anti-Kick Saturation Clamping)
+            // Ngăn chặn giật sốc động cơ ở các góc zigzag đổi hướng đột ngột (tránh trượt bánh)
+            // Trong khi các đoạn cua uốn lượn mượt (dTerm ~20-50) vẫn giữ nguyên 100% độ nhạy bứt tốc
             float deltaErr = error - lastError;
             lastError = error;
             float dTerm = pidConfig.Kd * deltaErr;
+            if (dTerm > 85.0f)  dTerm = 85.0f;
+            if (dTerm < -85.0f) dTerm = -85.0f;
 
             // Tổng giá trị bù lái (Correction)
             lastCorrection = pTerm + iTerm + dTerm;
