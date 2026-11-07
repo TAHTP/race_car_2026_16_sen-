@@ -463,6 +463,11 @@
             <input type="number" step="5" id="cfgSpeed" class="form-input" value="120">
         </div>
 
+        <div class="form-row" style="margin-top: 6px;">
+            <label>Tốc độ rẽ 90°:</label>
+            <input type="number" step="5" min="60" max="220" id="cfgTurnSpeed" class="form-input" value="130">
+        </div>
+
         <div class="form-row" style="margin-top: 8px;">
             <button id="btnSendPID" class="btn-sub success" style="width: 100%; font-size: 0.85rem; padding: 10px; font-weight: 800; transition: all 0.2s;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
         </div>
@@ -825,6 +830,7 @@
             const ki = document.getElementById('cfgKi').value;
             const kd = document.getElementById('cfgKd').value;
             const spd = document.getElementById('cfgSpeed').value;
+            const turn = document.getElementById('cfgTurnSpeed').value;
 
             if (btn) {
                 btn.style.background = '#0284c7';
@@ -833,7 +839,7 @@
                 btn.innerText = '⏳ ĐANG GỬI XUỐNG XE...';
             }
 
-            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
+            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
             await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
