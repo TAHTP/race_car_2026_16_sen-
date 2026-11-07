@@ -463,6 +463,16 @@
             <input type="number" step="5" id="cfgSpeed" class="form-input" value="120">
         </div>
 
+        <div class="form-row" style="margin-top: 6px; border-top: 1px dashed var(--card-border); padding-top: 6px;">
+            <label>Bánh ngoài 90°:</label>
+            <input type="number" step="5" id="cfgTurnOut" class="form-input" value="120">
+            <label style="margin-left: 6px;">Bánh trong 90°:</label>
+            <input type="number" step="5" id="cfgTurnIn" class="form-input" value="20">
+        </div>
+        <div style="font-size: 0.65rem; color: var(--text-dim); margin-top: 2px;">
+            💡 Bánh trong: &gt;0 lăn tới, =0 đứng yên, &lt;0 lùi hãm
+        </div>
+
         <div class="form-row" style="margin-top: 8px;">
             <button id="btnSendPID" class="btn-sub success" style="width: 100%; font-size: 0.85rem; padding: 10px; font-weight: 800; transition: all 0.2s;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
         </div>
@@ -825,6 +835,8 @@
             const ki = document.getElementById('cfgKi').value;
             const kd = document.getElementById('cfgKd').value;
             const spd = document.getElementById('cfgSpeed').value;
+            const turnOut = document.getElementById('cfgTurnOut').value;
+            const turnIn = document.getElementById('cfgTurnIn').value;
 
             if (btn) {
                 btn.style.background = '#0284c7';
@@ -833,7 +845,7 @@
                 btn.innerText = '⏳ ĐANG GỬI XUỐNG XE...';
             }
 
-            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
+            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turnOut}:${turnIn}`);
             await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
