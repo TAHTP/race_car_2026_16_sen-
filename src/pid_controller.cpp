@@ -129,6 +129,9 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
         end_i = 8;
     } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Ép chỉ đọc nhánh phải
         start_i = 7;
+    } else if (s_sector_action == 3) { // ACTION_LOCK_STRAIGHT: Chỉ đọc cụm mắt tâm (4..11), bỏ qua ngã 3/4 ở 2 bên rìa
+        start_i = 4;
+        end_i = 11;
     }
 
     // Quét các mắt theo kịch bản với giá trị chuẩn hóa Analog (0 - 1000)
@@ -176,6 +179,16 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
 LineCase_t pid_detect_case(float position, uint8_t blackCount) {
     if (!calibrationReady) {
         return LINE_CASE_STOPPED;
+    }
+
+    // NẾU MỐC SA BÀN ĐANG LÀ ÉP THẲNG (ACTION_LOCK_STRAIGHT = 3):
+    // CÔ LẬP TUYỆT ĐỐI: CHỈ BÁM TIM ĐƯỜNG PID, KHÔNG RẼ GÓC VUÔNG, KHÔNG RẼ NGÃ 3/4, KHÔNG XOAY MẤT LINE!
+    if (s_sector_action == 3) {
+        s_corner_latch = 0;
+        if (blackCount == 0) {
+            return LINE_CASE_DASHED_LINE; // Đứt vạch -> lướt thẳng, KHÔNG XOAY VÒNG!
+        }
+        return LINE_CASE_NORMAL_PID; // Có vạch -> Chạy PID bám tim đường thẳng!
     }
 
     // Nếu đang trong trạng thái chốt cua góc vuông -> Giữ nguyên trạng thái này
@@ -252,14 +265,6 @@ void pid_line_follow_step(void) {
         return;
     }
 
-    // Nếu sa bàn yêu cầu khóa thẳng phóng qua vạch đứt
-    if (s_sector_action == 3) {
-        motor_set_speeds(pidConfig.baseSpeed, pidConfig.baseSpeed);
-        lastComputeTime = millis();
-        lastError = 0.0f;
-        integralError = 0.0f;
-        return;
-    }
     // Nếu sa bàn yêu cầu phanh chốt đích
     if (s_sector_action == 4) {
         motor_stop();
