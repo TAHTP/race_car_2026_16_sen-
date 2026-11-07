@@ -409,6 +409,19 @@ void pid_line_follow_step(void) {
                 leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
                 rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
 
+                // 4. THUẬT TOÁN ĐẢM BẢO TÁC VỤ LÁI (Guarantee Action Algorithm - Harold Murcia):
+                // Khi xe chạy tốc độ cao vào cua, nếu một bên bánh vượt trần maxSpeed (bão hòa điện áp),
+                // trừ lượng vượt trần vào CẢ HAI BÁNH để bảo toàn 100% độ chênh lệch mô-men bẻ lái (triệt tiêu văng cua do clipping)
+                if (leftSpeed > pidConfig.maxSpeed) {
+                    int16_t excess = leftSpeed - pidConfig.maxSpeed;
+                    leftSpeed  -= excess; // Kéo bánh ngoài về đúng maxSpeed
+                    rightSpeed -= excess; // Dìm bánh trong sâu hơn tương ứng
+                } else if (rightSpeed > pidConfig.maxSpeed) {
+                    int16_t excess = rightSpeed - pidConfig.maxSpeed;
+                    rightSpeed -= excess;
+                    leftSpeed  -= excess;
+                }
+
                 // Giới hạn trong dải an toàn:
                 // Trong PID bám line thường, khống chế không cho bánh trong đảo chiều âm sâu
                 // để bảo vệ ma sát lăn của lốp, chống khóa trượt bánh ở zigzag
