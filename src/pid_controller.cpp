@@ -213,15 +213,15 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
         uint8_t leftOuter = __builtin_popcount(mask & 0x000F);   // Cụm mắt 0,1,2,3 cực trái
         uint8_t rightOuter = __builtin_popcount(mask & 0xF000);  // Cụm mắt 12,13,14,15 cực phải
 
-        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang (bắt sớm từ mắt 0..2, cho phép mắt phải nhiễu <= 1)
-        if (leftOuter >= 2 && rightOuter <= 1 && (mask & 0x0007) != 0 && totalBlack <= 9) {
+        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang, mắt phải hoàn toàn trắng
+        if (leftOuter >= 2 && rightOuter == 0 && (mask & 0x0003) != 0 && totalBlack <= 9) {
             s_corner_latch = 1;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_LEFT;
         }
 
-        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang (bắt sớm từ mắt 13..15, cho phép mắt trái nhiễu <= 1)
-        if (rightOuter >= 2 && leftOuter <= 1 && (mask & 0xE000) != 0 && totalBlack <= 9) {
+        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang, mắt trái hoàn toàn trắng
+        if (rightOuter >= 2 && leftOuter == 0 && (mask & 0xC000) != 0 && totalBlack <= 9) {
             s_corner_latch = 2;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_RIGHT;
@@ -284,16 +284,15 @@ void pid_line_follow_step(void) {
             lastError = 0.0f;
             s_dFiltered = 0.0f;
         } else {
-            int16_t t_out = pidConfig.turnSpeed;
-            int16_t t_in  = (int16_t)(pidConfig.turnSpeed * 28 / 100);
-            if (t_in < 32) t_in = 32;
+            int16_t t_fwd = pidConfig.turnSpeed;
+            int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
 
             if (s_corner_latch == 1) {
-                // Xoay góc vuông Trái vi sai: Bánh trái lăn tiến chậm (tâm quay), bánh phải phóng tới
-                motor_set_speeds(t_in, t_out);
+                // Xoay góc vuông Trái: Bánh trái giật lùi, bánh phải phóng tới (Quay ngoắt tại chỗ)
+                motor_set_speeds(t_rev, t_fwd);
             } else {
-                // Xoay góc vuông Phải vi sai: Bánh trái phóng tới, bánh phải lăn tiến chậm (tâm quay)
-                motor_set_speeds(t_out, t_in);
+                // Xoay góc vuông Phải: Bánh trái phóng tới, bánh phải giật lùi (Quay ngoắt tại chỗ)
+                motor_set_speeds(t_fwd, t_rev);
             }
             return;
         }
@@ -306,16 +305,15 @@ void pid_line_follow_step(void) {
     // Xác định trạng thái
     currentCase = pid_detect_case(position, blackCount);
 
-    int16_t t_out = pidConfig.turnSpeed;
-    int16_t t_in  = (int16_t)(pidConfig.turnSpeed * 28 / 100);
-    if (t_in < 32) t_in = 32;
+    int16_t t_fwd = pidConfig.turnSpeed;
+    int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
 
     // Nếu vừa kích hoạt chốt cua góc vuông trong pid_detect_case -> Thực thi ngay
     if (s_corner_latch != 0) {
         if (s_corner_latch == 1) {
-            motor_set_speeds(t_in, t_out);
+            motor_set_speeds(t_rev, t_fwd);
         } else {
-            motor_set_speeds(t_out, t_in);
+            motor_set_speeds(t_fwd, t_rev);
         }
         return;
     }
@@ -422,12 +420,9 @@ void pid_line_follow_step(void) {
                     leftSpeed  -= excess;
                 }
 
-                // Giới hạn trong dải an toàn:
-                // Trong PID bám line thường, khống chế không cho bánh trong đảo chiều âm sâu
-                // để bảo vệ ma sát lăn của lốp, chống khóa trượt bánh ở zigzag
-                int16_t minPIDSpeed = (pidConfig.minSpeed < -20) ? -20 : pidConfig.minSpeed;
-                leftSpeed  = clamp_int16(leftSpeed, minPIDSpeed, pidConfig.maxSpeed);
-                rightSpeed = clamp_int16(rightSpeed, minPIDSpeed, pidConfig.maxSpeed);
+                // Giới hạn trong dải an toàn theo cấu hình (cho phép hãm/lùi âm theo minSpeed)
+                leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
+                rightSpeed = clamp_int16(rightSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
             } else {
                 // CHẾ ĐỘ TEST CĂN TÂM TĨNH TRÊN BÀN (baseSpeed = 0):
                 // Lệch trái -> bánh quay đưa về phải; Lệch phải -> bánh quay đưa về trái; Chuẩn tâm -> đứng yên!
@@ -440,15 +435,15 @@ void pid_line_follow_step(void) {
         }
 
         // =====================================================================
-        // CASE: GÓC VUÔNG 90 ĐỘ TRÁI / PHẢI
+        // CASE: GÓC VUÔNG 90 ĐỘ TRÁI / PHẢI (Quay ngoắt tại chỗ)
         // =====================================================================
         case LINE_CASE_CORNER_LEFT: {
-            motor_set_speeds(t_in, t_out);
+            motor_set_speeds(t_rev, t_fwd);
             break;
         }
 
         case LINE_CASE_CORNER_RIGHT: {
-            motor_set_speeds(t_out, t_in);
+            motor_set_speeds(t_fwd, t_rev);
             break;
         }
 
@@ -464,18 +459,17 @@ void pid_line_follow_step(void) {
                 break;
             }
 
-            int16_t t_spin_rev = - (int16_t)(pidConfig.turnSpeed * 70 / 100);
             // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối với lực mạnh
             if (lastKnownDirection < 0 || lastKnownPosition < -5.0f || lastError < -5.0f) {
-                motor_set_speeds(t_spin_rev, t_out); // Giật xoay mạnh tìm vạch bên trái
+                motor_set_speeds(t_rev, t_fwd); // Giật xoay mạnh tìm vạch bên trái
             } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f || lastError > 5.0f) {
-                motor_set_speeds(t_out, t_spin_rev); // Giật xoay mạnh tìm vạch bên phải
+                motor_set_speeds(t_fwd, t_rev); // Giật xoay mạnh tìm vạch bên phải
             } else {
                 // Nếu hướng = 0 (trước đó đi thẳng), dùng lastKnownPosition để quyết định xoay
                 if (lastKnownPosition <= 0.0f) {
-                    motor_set_speeds(t_spin_rev, t_out);
+                    motor_set_speeds(t_rev, t_fwd);
                 } else {
-                    motor_set_speeds(t_out, t_spin_rev);
+                    motor_set_speeds(t_fwd, t_rev);
                 }
             }
             break;
