@@ -228,15 +228,15 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
         uint8_t leftOuter = __builtin_popcount(mask & 0x000F);   // Cụm mắt 0,1,2,3 cực trái
         uint8_t rightOuter = __builtin_popcount(mask & 0xF000);  // Cụm mắt 12,13,14,15 cực phải
 
-        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang, mắt phải hoàn toàn trắng
-        if (leftOuter >= 2 && rightOuter == 0 && (mask & 0x0003) != 0 && totalBlack <= 9) {
+        // 1. Góc vuông Trái: Cụm mắt ngoài cùng bên trái nhìn thấy vạch ngang (bắt đón đầu từ mắt 0..2, mắt phải hoàn toàn trắng)
+        if (leftOuter >= 2 && rightOuter == 0 && (mask & 0x0007) != 0 && totalBlack <= 9) {
             s_corner_latch = 1;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_LEFT;
         }
 
-        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang, mắt trái hoàn toàn trắng
-        if (rightOuter >= 2 && leftOuter == 0 && (mask & 0xC000) != 0 && totalBlack <= 9) {
+        // 2. Góc vuông Phải: Cụm mắt ngoài cùng bên phải nhìn thấy vạch ngang (bắt đón đầu từ mắt 13..15, mắt trái hoàn toàn trắng)
+        if (rightOuter >= 2 && leftOuter == 0 && (mask & 0xE000) != 0 && totalBlack <= 9) {
             s_corner_latch = 2;
             s_corner_latch_time = millis();
             return LINE_CASE_CORNER_RIGHT;
@@ -290,10 +290,10 @@ void pid_line_follow_step(void) {
     if (s_corner_latch != 0) {
         unsigned long latchElapsed = millis() - s_corner_latch_time;
         uint16_t mask = sensor_get_line_bits();
-        // Mắt tâm (6, 7, 8, 9) khóa lại line
-        bool center_locked = ((mask & 0x03C0) != 0);
+        // Mắt tâm (5, 6, 7, 8, 9, 10) đón bắt lại line
+        bool center_locked = ((mask & 0x07E0) != 0);
 
-        if ((latchElapsed >= 35 && center_locked) || latchElapsed > 380) {
+        if ((latchElapsed >= 30 && center_locked) || latchElapsed > 350) {
             s_corner_latch = 0;
             integralError = 0.0f;
             lastError = 0.0f;
