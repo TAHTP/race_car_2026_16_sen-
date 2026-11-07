@@ -268,7 +268,7 @@ void ble_send_map_data(uint8_t map_idx) {
         const Waypoint_t *wp = map_get_waypoint(map_idx, i);
         if (wp) {
             snprintf(buf, sizeof(buf), "WP:%u,%u,%lu,%d,%u",
-                     map_idx, i, (unsigned long)wp->end_ticks, wp->target_speed, wp->action);
+                     map_idx, i, (unsigned long)wp->start_ticks, wp->target_speed, wp->action);
             ble_send_string(buf);
             delay(15); // Khoảng nghỉ nhỏ để tránh tràn bộ đệm BLE Notify
         }

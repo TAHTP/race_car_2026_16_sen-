@@ -74,7 +74,7 @@ bool map_is_right_lane(void) {
 bool map_set_waypoint(uint8_t map_idx, uint8_t wp_idx, uint32_t ticks, int16_t speed, uint8_t action) {
     if (map_idx >= NUM_MAPS || wp_idx >= MAX_WAYPOINTS) return false;
 
-    s_maps[map_idx].wps[wp_idx].end_ticks = ticks;
+    s_maps[map_idx].wps[wp_idx].start_ticks = ticks;
     s_maps[map_idx].wps[wp_idx].target_speed = speed;
     s_maps[map_idx].wps[wp_idx].action = action;
 
@@ -105,6 +105,7 @@ const Waypoint_t* map_get_waypoint(uint8_t map_idx, uint8_t wp_idx) {
 void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, uint8_t *out_wp_idx) {
     MapProfile_t *prof = &s_maps[s_selected_map];
 
+    // 1. Nếu không có mốc nào: Chạy PID thuần với tốc độ nền do Web cài đặt
     if (prof->count == 0) {
         *out_speed = car_get_scan_speed();
         *out_action = ACTION_NORMAL;
@@ -112,9 +113,19 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
         return;
     }
 
-    // Tìm phân đoạn mà current_ticks đang nằm trong
-    for (uint8_t i = 0; i < prof->count; i++) {
-        if (current_ticks <= prof->wps[i].end_ticks) {
+    // 2. Nếu xe chưa chạy tới Mốc Bắt Đầu đầu tiên (current_ticks < mốc 0):
+    // Xe xuất phát chạy PID bình thường theo tốc độ nền
+    if (current_ticks < prof->wps[0].start_ticks) {
+        *out_speed = car_get_scan_speed();
+        *out_action = ACTION_NORMAL;
+        *out_wp_idx = 0;
+        return;
+    }
+
+    // 3. Tìm mốc BẮT ĐẦU đang có hiệu lực (quét ngược từ mốc lớn nhất về mốc 0):
+    // Mốc nào có start_ticks <= current_ticks đầu tiên chính là mốc đang thực thi!
+    for (int8_t i = (int8_t)(prof->count - 1); i >= 0; i--) {
+        if (current_ticks >= prof->wps[i].start_ticks) {
             *out_speed = prof->wps[i].target_speed;
             uint8_t act = prof->wps[i].action;
 
@@ -125,14 +136,12 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
             }
 
             *out_action = act;
-            *out_wp_idx = i;
+            *out_wp_idx = (uint8_t)i;
             return;
         }
     }
 
-    // Nếu đã chạy vượt qua mốc cuối cùng -> Tiếp tục chạy PID thuần với tốc độ của mốc cuối, KHÔNG TỰ DỪNG!
-    // Xe sẽ tiếp tục bám line và tự bẻ góc vuông y hệt Mode 1 cho đến khi chạm vạch đích thật sự!
-    *out_speed = prof->wps[prof->count - 1].target_speed;
+    *out_speed = car_get_scan_speed();
     *out_action = ACTION_NORMAL;
-    *out_wp_idx = prof->count;
+    *out_wp_idx = 0;
 }

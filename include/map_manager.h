@@ -22,7 +22,7 @@ typedef enum {
 
 // Cấu trúc 1 Mốc phân đoạn (Waypoint)
 typedef struct {
-    uint32_t end_ticks;      // Mốc xung encoder kết thúc phân đoạn
+    uint32_t start_ticks;    // Mốc xung encoder BẮT ĐẦU phân đoạn
     int16_t  target_speed;   // Tốc độ nền mong muốn (baseSpeed: 0 - 255)
     uint8_t  action;         // WaypointAction_t
 } Waypoint_t;

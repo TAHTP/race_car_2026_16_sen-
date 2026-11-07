@@ -491,7 +491,7 @@
                 <thead>
                     <tr>
                         <th style="width: 25px;">#</th>
-                        <th>Xung Mốc</th>
+                        <th>Từ Xung (Bắt đầu)</th>
                         <th style="width: 55px;">Tốc độ</th>
                         <th>Hành động</th>
                         <th style="width: 25px;">Xóa</th>
@@ -608,8 +608,24 @@
             }
         }
 
-        // BẮT ĐẦU TRỐNG HOÀN TOÀN - KHÔNG ĐỂ SỐ ẢO
-        const userMaps = [[], [], []];
+        // BẮT ĐẦU VỚI LOCAL STORAGE - TỰ LƯU VĨNH VIỄN TRÊN ĐIỆN THOẠI
+        let userMaps = [[], [], []];
+        try {
+            const saved = localStorage.getItem('racecar_user_maps_v2');
+            if (saved) {
+                userMaps = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.error('Lỗi đọc localStorage:', e);
+        }
+
+        function saveLocalMaps() {
+            try {
+                localStorage.setItem('racecar_user_maps_v2', JSON.stringify(userMaps));
+            } catch (e) {
+                console.error('Lỗi ghi localStorage:', e);
+            }
+        }
 
         // Khởi tạo 16 ô cảm biến
         const row = document.getElementById('sensorRow');
@@ -906,28 +922,33 @@
         function captureCurrentTicks() {
             const ticks = lastLiveTicks > 0 ? lastLiveTicks : 1000;
             userMaps[activeMap].push({ ticks: ticks, speed: 110, action: 0 });
+            saveLocalMaps();
             renderWpTable();
-            log(`📍 Đã chụp mốc thực tế: ${ticks} xung`);
+            log(`📍 Đã chụp mốc bắt đầu: ${ticks} xung`);
         }
 
         function addManualRow() {
             const list = userMaps[activeMap];
             const nextTicks = list.length > 0 ? list[list.length - 1].ticks + 1000 : 1000;
             list.push({ ticks: nextTicks, speed: 110, action: 0 });
+            saveLocalMaps();
             renderWpTable();
         }
 
         function editWp(idx, f, v) {
             userMaps[activeMap][idx][f] = parseInt(v);
+            saveLocalMaps();
         }
 
         function delWp(idx) {
             userMaps[activeMap].splice(idx, 1);
+            saveLocalMaps();
             renderWpTable();
         }
 
         function clearAllWps() {
             userMaps[activeMap] = [];
+            saveLocalMaps();
             renderWpTable();
             sendCmd(`CMD:WP_CLEAR:${activeMap}`);
             log('🗑️ Đã xóa sạch mốc Map ' + (activeMap + 1));
