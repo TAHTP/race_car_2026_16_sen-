@@ -184,8 +184,9 @@ void controlTask(void *pvParameters) {
                 // LƯỢT 2: Chạy đua bung tốc độ theo bảng Waypoint sa bàn
                 map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);
 
+                uint8_t total_wps = map_get_waypoint_count(map_get_selected());
                 bool is_race_finish_candidate = (act == ACTION_BRAKE_STOP) || 
-                    (is_crossline_candidate && (wp_idx >= map_get_waypoint_count(map_get_selected()) - 1));
+                    (is_crossline_candidate && (total_wps == 0 || wp_idx >= total_wps - 1));
 
                 if (is_race_finish_candidate) {
                     s_finish_debounce++;

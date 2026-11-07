@@ -10,46 +10,14 @@ static bool s_is_right_lane = false;
 
 void map_load_defaults(void) {
     // -------------------------------------------------------------
-    // CẤU HÌNH MẪU BAN ĐẦU CHO MAP 1 (Làn Trái)
+    // KHỞI TẠO BẢNG MỐC TRỐNG BAN ĐẦU (0 MỐC ẢO)
+    // Xe sẽ chạy 100% theo "Tốc độ nền" người dùng cài đặt trên Web!
+    // Chỉ khi nào người dùng bấm "Thêm mốc" và "Lưu vào xe" trên Web
+    // thì xe mới áp dụng các mốc sa bàn tùy biến.
     // -------------------------------------------------------------
-    s_maps[0].count = 6;
-    // Đoạn 1: Xuất phát lướt qua bẫy vòng tròn
-    s_maps[0].wps[0] = { .end_ticks = 1500, .target_speed = 100, .action = ACTION_NORMAL };
-    // Đoạn 2: Leo lên góc vuông đỉnh Khu 1
-    s_maps[0].wps[1] = { .end_ticks = 2600, .target_speed = 85,  .action = ACTION_NORMAL };
-    // Đoạn 3: ÉP NHÁNH TRONG (Lượn Sóng tròn - bỏ Răng Cưa ngoài)
-    s_maps[0].wps[2] = { .end_ticks = 4800, .target_speed = 110, .action = ACTION_FORCE_RIGHT };
-    // Đoạn 4: Vượt đoạn vạch nét đứt (khóa lái phóng thẳng)
-    s_maps[0].wps[3] = { .end_ticks = 5500, .target_speed = 120, .action = ACTION_LOCK_STRAIGHT };
-    // Đoạn 5: Ôm cua U-turn dưới đáy
-    s_maps[0].wps[4] = { .end_ticks = 7000, .target_speed = 90,  .action = ACTION_NORMAL };
-    // Đoạn 6: 2 Vạch ngang -> Phanh dừng tại rương kho báu
-    s_maps[0].wps[5] = { .end_ticks = 7800, .target_speed = 60,  .action = ACTION_BRAKE_STOP };
-
-    // -------------------------------------------------------------
-    // CẤU HÌNH MẪU BAN ĐẦU CHO MAP 2 (Làn Trái)
-    // -------------------------------------------------------------
-    s_maps[1].count = 6;
-    s_maps[1].wps[0] = { .end_ticks = 1400, .target_speed = 100, .action = ACTION_NORMAL };
-    s_maps[1].wps[1] = { .end_ticks = 2500, .target_speed = 85,  .action = ACTION_NORMAL };
-    // Map 2: Nhánh Lượn Sóng nằm ở NGOÀI (Trái) -> ÉP NHÁNH NGOÀI
-    s_maps[1].wps[2] = { .end_ticks = 4800, .target_speed = 110, .action = ACTION_FORCE_LEFT };
-    s_maps[1].wps[3] = { .end_ticks = 5500, .target_speed = 120, .action = ACTION_LOCK_STRAIGHT };
-    s_maps[1].wps[4] = { .end_ticks = 7000, .target_speed = 90,  .action = ACTION_NORMAL };
-    s_maps[1].wps[5] = { .end_ticks = 7800, .target_speed = 60,  .action = ACTION_BRAKE_STOP };
-
-    // -------------------------------------------------------------
-    // CẤU HÌNH MẪU BAN ĐẦU CHO MAP 3 (Làn Trái)
-    // -------------------------------------------------------------
-    s_maps[2].count = 6;
-    // Map 3: Xuất phát qua 2 hình thoi kép
-    s_maps[2].wps[0] = { .end_ticks = 1600, .target_speed = 95,  .action = ACTION_FORCE_RIGHT };
-    s_maps[2].wps[1] = { .end_ticks = 2700, .target_speed = 85,  .action = ACTION_NORMAL };
-    // Map 3: Nhánh Lượn Sóng nằm ở NGOÀI (Trái)
-    s_maps[2].wps[2] = { .end_ticks = 4900, .target_speed = 110, .action = ACTION_FORCE_LEFT };
-    s_maps[2].wps[3] = { .end_ticks = 5600, .target_speed = 120, .action = ACTION_LOCK_STRAIGHT };
-    s_maps[2].wps[4] = { .end_ticks = 7100, .target_speed = 90,  .action = ACTION_NORMAL };
-    s_maps[2].wps[5] = { .end_ticks = 7900, .target_speed = 60,  .action = ACTION_BRAKE_STOP };
+    for (uint8_t m = 0; m < NUM_MAPS; m++) {
+        s_maps[m].count = 0;
+    }
 }
 
 void map_manager_init(void) {
@@ -60,7 +28,7 @@ void map_manager_init(void) {
 }
 
 void map_save_to_flash(void) {
-    prefs.begin("race_maps", false);
+    prefs.begin("race_maps_v2", false);
     prefs.putBytes("map_data", (const void*)s_maps, sizeof(s_maps));
     prefs.putUChar("sel_map", s_selected_map);
     prefs.putBool("is_right", s_is_right_lane);
@@ -68,7 +36,7 @@ void map_save_to_flash(void) {
 }
 
 bool map_load_from_flash(void) {
-    prefs.begin("race_maps", true);
+    prefs.begin("race_maps_v2", true);
     if (!prefs.isKey("map_data")) {
         prefs.end();
         return false;

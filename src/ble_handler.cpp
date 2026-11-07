@@ -43,7 +43,7 @@ CarRunMode_t car_get_run_mode(void) {
 }
 
 void car_set_scan_speed(int16_t speed) {
-    s_scan_speed = constrain(speed, 50, 220);
+    s_scan_speed = constrain(speed, 0, 255);
 }
 
 int16_t car_get_scan_speed(void) {
@@ -93,6 +93,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         else if (rxValue.startsWith("CMD:SCAN_SPD:")) {
             int16_t spd = rxValue.substring(13).toInt();
             car_set_scan_speed(spd);
+            pid_set_base_speed(spd);
             ble_send_string("ACK:SCAN_SPD_SET");
         }
         else if (rxValue == "CMD:RESET_ENC") {
@@ -113,6 +114,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
                 int16_t spd = (p4 > 0) ? rxValue.substring(p3 + 1, p4).toInt() : rxValue.substring(p3 + 1).toInt();
                 pid_set_tunings(kp, ki, kd);
                 pid_set_base_speed(spd);
+                car_set_scan_speed(spd);
                 if (p4 > 0) {
                     int16_t turn = rxValue.substring(p4 + 1).toInt();
                     pid_set_turn_speed(turn);
