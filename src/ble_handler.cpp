@@ -120,11 +120,6 @@ class RxCallbacks : public BLECharacteristicCallbacks {
                 ble_send_string("ACK:PID_UPDATED");
             }
         }
-        else if (rxValue.startsWith("CMD:TURN_SPD:")) {
-            int16_t turn = rxValue.substring(13).toInt();
-            pid_set_turn_speed(turn);
-            ble_send_string("ACK:TURN_UPDATED");
-        }
         // 2. Chọn map & làn
         else if (rxValue.startsWith("CMD:MAP:")) {
             uint8_t m = rxValue.substring(8).toInt();

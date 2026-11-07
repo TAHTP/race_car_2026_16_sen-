@@ -17,10 +17,7 @@ typedef enum {
     ACTION_FORCE_LEFT    = 1, // Bỏ mắt phải, ép rẽ ôm nhánh Trái (Lượn Sóng)
     ACTION_FORCE_RIGHT   = 2, // Bỏ mắt trái, ép rẽ ôm nhánh Phải (Lượn Sóng)
     ACTION_LOCK_STRAIGHT = 3, // Khóa cân bằng 2 bánh chạy thẳng (Vượt vạch đứt)
-    ACTION_BRAKE_STOP    = 4, // Phanh dừng chốt đích
-    ACTION_TURN_90_LEFT  = 5, // Cưỡng bức rẽ Vuông Trái 90° (Ngã 3 chữ T / Góc vuông)
-    ACTION_TURN_90_RIGHT = 6, // Cưỡng bức rẽ Vuông Phải 90° (Ngã 3 chữ T / Góc vuông)
-    ACTION_SWEEP_BOOST   = 7  // Bứt tốc ôm cua uốn lượn (Chỉ thốc ga trong cua mềm)
+    ACTION_BRAKE_STOP    = 4  // Phanh dừng chốt đích
 } WaypointAction_t;
 
 // Cấu trúc 1 Mốc phân đoạn (Waypoint)

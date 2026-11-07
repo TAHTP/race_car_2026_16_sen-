@@ -20,7 +20,7 @@ extern "C" {
 #define N_SENSORS             16      // Tổng số mắt cảm biến
 #define SENSOR_START_IDX      0       // Bắt đầu từ mắt 0
 #define SENSOR_END_IDX        15      // Kết thúc ở mắt 15
-#define ADC_SAMPLES           1       // 1 lần lấy mẫu ADC siêu tốc (10us/mắt, 16 mắt chỉ mất 160us)
+#define ADC_SAMPLES           4       // Số lần lấy mẫu ADC trung bình để lọc nhiễu
 #define MIN_CALIBRATION_DELTA 150     // Chênh lệch tối thiểu giữa Min và Max (tránh nhiễu)
 #define BUTTON_DEBOUNCE_MS    50      // Thời gian chống rung phím (ms)
 

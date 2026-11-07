@@ -50,21 +50,23 @@ void sensor_mux_select(uint8_t channel) {
 
 uint16_t sensor_read_mux(uint8_t channel) {
     sensor_mux_select(channel);
-    return (uint16_t)analogRead(PIN_LINE_SIG);
+
+    uint32_t sum = 0;
+    for (int s = 0; s < ADC_SAMPLES; s++) {
+        sum += analogRead(PIN_LINE_SIG);
+    }
+    return (uint16_t)(sum / ADC_SAMPLES);
 }
 
-static uint32_t s_last_adc_read_us = 0;
-
 void sensor_read_all(void) {
-    uint32_t now = micros();
-    // Throttle ngắt: Nếu vừa đọc trong vòng 800us thì tái sử dụng dữ liệu ADC tươi mới, tránh đọc lặp
-    if (s_last_adc_read_us != 0 && (now - s_last_adc_read_us) < 800 && !isCalibrating) {
-        return;
-    }
-    s_last_adc_read_us = now;
-
     for (uint8_t i = 0; i < N_SENSORS; i++) {
-        sensorRaw[i] = sensor_read_mux(i); // Phản xạ tức thì 100%, không trễ IIR
+        uint16_t raw = sensor_read_mux(i);
+        if (isCalibrating) {
+            sensorRaw[i] = raw;
+        } else {
+            // Bộ lọc số IIR siêu nhẹ (85% mới, 15% cũ) làm phẳng xung nhiễu đèn 100Hz và EMI motor
+            sensorRaw[i] = (uint16_t)(((uint32_t)raw * 85 + (uint32_t)sensorRaw[i] * 15) / 100);
+        }
     }
 }
 
@@ -167,12 +169,7 @@ uint16_t sensor_get_calibrated(uint8_t index) {
 
 bool sensor_is_black(uint8_t index) {
     if (index >= N_SENSORS) return false;
-    uint16_t cal = sensor_get_calibrated(index);
-    // Mắt cánh ngoài (0..3 và 12..15): nhạy bén với ngưỡng 300 để bắt góc vuông tức thì
-    if (index <= 3 || index >= 12) {
-        return (cal >= 300);
-    }
-    return (cal >= 420);
+    return (sensor_get_calibrated(index) >= 500);
 }
 
 uint16_t sensor_get_line_bits(void) {
