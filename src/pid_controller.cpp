@@ -187,6 +187,21 @@ LineCase_t pid_detect_case(float position, uint8_t blackCount) {
     // Kiểm tra vạch ngang / ngã tư / vạch đích / Diode (từ 10 mắt đen trở lên)
     uint16_t mask = sensor_get_line_bits();
     uint8_t totalBlack = __builtin_popcount(mask);
+    // CƯỠNG BỨC RẼ VUÔNG TRÁI / PHẢI 90° THEO MỐC SA BÀN (ACTION_TURN_90_LEFT=5 / ACTION_TURN_90_RIGHT=6)
+    if (s_sector_action == 5) {
+        if ((mask & 0x000F) != 0 || totalBlack >= 7) {
+            s_corner_latch = 1;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_LEFT;
+        }
+    } else if (s_sector_action == 6) {
+        if ((mask & 0xF000) != 0 || totalBlack >= 7) {
+            s_corner_latch = 2;
+            s_corner_latch_time = millis();
+            return LINE_CASE_CORNER_RIGHT;
+        }
+    }
+
     if (totalBlack >= 10) {
         // NẾU MỐC SA BÀN ĐANG LÀ ÉP TRÁI (BẪY DIODE RẼ TRÁI / NGÃ 3 CHỮ T):
         // CẢM BIẾN CHẠM VÀO VẠCH NGANG -> KÍCH HOẠT BẺ VUÔNG TRÁI NGAY!
@@ -364,22 +379,20 @@ void pid_line_follow_step(void) {
             int16_t rightSpeed = 0;
 
             if (pidConfig.baseSpeed > 0) {
-                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up): Tăng dần tốc độ từ 38 lên baseSpeed trong ~200ms
-                if (s_ramped_base < 38.0f) {
-                    s_ramped_base = 38.0f;
-                }
+                // 1. ĐIỀU CHỈNH TỐC ĐỘ NỀN MƯỢT MÀ (Ramp-up / Ramp-down):
+                // Tự do bám theo baseSpeed cài đặt, không bị kẹp sàn cứng 38/45
                 if (s_ramped_base < (float)pidConfig.baseSpeed) {
-                    s_ramped_base += 1.0f; // Mỗi chu kỳ 2ms tăng 1 PWM
+                    s_ramped_base += 1.0f; // Mỗi chu kỳ 2ms tăng 1 PWM (khởi động êm)
                     if (s_ramped_base > (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
                 } else if (s_ramped_base > (float)pidConfig.baseSpeed) {
-                    s_ramped_base -= 2.0f;
+                    s_ramped_base -= 2.0f; // Mỗi chu kỳ 2ms giảm 2 PWM
                     if (s_ramped_base < (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
                 }
 
                 // 2. HẠ GA CHỦ ĐỘNG KẾT HỢP ĐỘ LỆCH VẠCH VÀ LỰC BẺ LÁI (Dynamic Steer Drag)
-                // - Đường thẳng & cua nhẹ: dragFactor ~ 0 -> Xe phóng full baseSpeed
-                // - Cua uốn lượn: dragFactor ~ 0.3 -> Giảm nhẹ ~15 PWM, giữ tốc bốc mượt
-                // - Cua gắt & Zigzag bẻ lái gắt: dragFactor ~ 1.0 -> Tự động ghìm ga dứt khoát về ~70-75 PWM
+                // - Đường thẳng & cua nhẹ: dragFactor ~ 0 -> Xe giữ nguyên baseSpeed cài đặt
+                // - Cua uốn lượn: dragFactor ~ 0.3 -> Giảm nhẹ ~15%, giữ đà mượt mà
+                // - Cua gắt & Zigzag bẻ lái gắt: dragFactor ~ 1.0 -> Tự động ghìm ga dứt khoát
                 float steerRatio = fabsf(lastCorrection) / 120.0f;
                 if (steerRatio > 1.0f) steerRatio = 1.0f;
 
@@ -387,25 +400,29 @@ void pid_line_follow_step(void) {
                 if (errRatio > 1.0f) errRatio = 1.0f;
 
                 float dragFactor = (steerRatio > errRatio) ? steerRatio : errRatio;
-                int16_t speedDrop = (int16_t)(s_ramped_base * 0.38f * dragFactor);
+                int16_t speedDrop = (int16_t)(s_ramped_base * 0.35f * dragFactor);
                 int16_t currentBase = (int16_t)s_ramped_base - speedDrop;
-                if (currentBase < 45) currentBase = 45;
+                if (currentBase < 15) currentBase = 15; // Cho phép bò chậm tốc 20..30 thoải mái
 
-                // 3. BÙ GA THÔNG MINH THEO ENCODER (Sensor-Gated Anti-Stall Boost)
-                // ĐIỀU KIỆN AN TOÀN: Chỉ bù khi xe đã đề-pa xong VÀ 16 mắt xác nhận đang nằm trên vạch line!
-                int16_t auto_boost = 0;
-                if (s_ramped_base >= (float)pidConfig.baseSpeed * 0.85f && blackCount >= 1) {
-                    float v_real = (fabsf(encoder_get_speed_L_mms()) + fabsf(encoder_get_speed_R_mms())) * 0.5f;
-                    float v_expected = (float)currentBase * 9.5f; // Vận tốc kỳ vọng mm/s
-                    if (v_real < v_expected * 0.70f) { // Bị sụt > 30% do pin yếu hoặc lực cản cua/dốc
-                        float deficit = (v_expected * 0.70f) - v_real;
-                        auto_boost = (int16_t)(deficit * 0.035f);
-                        if (auto_boost > 28) auto_boost = 28; // Giới hạn trần tối đa +28 PWM để an toàn tuyệt đối
+                // 3. BỨT TỐC CUA UỐN LƯỢN ĐỘC LẬP (Isolated Sweeping Boost - ACTION_SWEEP_BOOST = 7):
+                // CHỈ KÍCH HOẠT KHI ĐÚNG PHÂN ĐOẠN UỐN LƯỢN VÀ THỎA MÃN BỘ LỌC AN TOÀN
+                int16_t sweep_boost = 0;
+                if (s_sector_action == 7 /* ACTION_SWEEP_BOOST */) {
+                    uint16_t curMask = sensor_get_line_bits();
+                    // 1. Không phải góc vuông hay ngã 3/ngã 4: Hai cánh ngoài cùng (mắt 0,1 và 14,15) phải sạch bóng!
+                    bool wings_clear = ((curMask & 0xC003) == 0);
+                    // 2. Không phải đường thẳng: Sai số đủ để xác nhận xe đang ôm cua mềm
+                    bool in_curve = (absErr >= 8.0f && absErr <= 35.0f);
+                    // 3. Tuyệt đối không phải Zigzag: Tốc độ lật vạch nhỏ (ôm cua mềm một chiều, không lắc đổi dấu)
+                    bool not_zigzag = (fabsf(deltaErr) <= 3.5f);
+
+                    if (wings_clear && in_curve && not_zigzag) {
+                        sweep_boost = 24; // Bơm thêm +24 PWM bứt tốc ôm cua xé gió
                     }
                 }
 
-                leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
-                rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
+                leftSpeed  = currentBase + sweep_boost + (int16_t)lastCorrection;
+                rightSpeed = currentBase + sweep_boost - (int16_t)lastCorrection;
 
                 // 4. THUẬT TOÁN ĐẢM BẢO TÁC VỤ LÁI (Guarantee Action Algorithm - Harold Murcia):
                 // Khi xe chạy tốc độ cao vào cua, nếu một bên bánh vượt trần maxSpeed (bão hòa điện áp),

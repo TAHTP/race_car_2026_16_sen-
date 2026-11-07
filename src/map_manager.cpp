@@ -150,10 +150,12 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
             *out_speed = prof->wps[i].target_speed;
             uint8_t act = prof->wps[i].action;
 
-            // Nếu xe đặt ở Làn Phải (Mirror Track): Đảo ngược hướng ép Trái <-> Phải
+            // Nếu xe đặt ở Làn Phải (Mirror Track): Đảo ngược hướng ép Trái <-> Phải và Rẽ 90°
             if (s_is_right_lane) {
                 if (act == ACTION_FORCE_LEFT) act = ACTION_FORCE_RIGHT;
                 else if (act == ACTION_FORCE_RIGHT) act = ACTION_FORCE_LEFT;
+                else if (act == ACTION_TURN_90_LEFT) act = ACTION_TURN_90_RIGHT;
+                else if (act == ACTION_TURN_90_RIGHT) act = ACTION_TURN_90_LEFT;
             }
 
             *out_action = act;

@@ -463,8 +463,13 @@
             <input type="number" step="5" id="cfgSpeed" class="form-input" value="120">
         </div>
 
+        <div class="form-row">
+            <label>Lực bẻ góc vuông (Turn Speed):</label>
+            <input type="number" step="5" id="cfgTurnSpeed" class="form-input" value="130">
+        </div>
+
         <div class="form-row" style="margin-top: 8px;">
-            <button id="btnSendPID" class="btn-sub success" style="width: 100%; font-size: 0.85rem; padding: 10px; font-weight: 800; transition: all 0.2s;" onclick="sendPID()">📤 NẠP PID XUỐNG XE</button>
+            <button id="btnSendPID" class="btn-sub success" style="width: 100%; font-size: 0.85rem; padding: 10px; font-weight: 800; transition: all 0.2s;" onclick="sendPID()">📤 NẠP PID & TỐC ĐỘ XUỐNG XE</button>
         </div>
     </div>
 
@@ -652,6 +657,9 @@
                 document.getElementById('btnConnect').classList.add('connected');
                 document.getElementById('bleText').innerText = '✅ ĐÃ KẾT NỐI';
                 log('✅ Kết nối thành công!');
+                setTimeout(() => {
+                    sendCmd('CMD:GET_MAP:0');
+                }, 300);
             } catch (e) {
                 log('❌ Lỗi BLE: ' + e);
             }
@@ -733,6 +741,23 @@
                     }
                     const elBlk = document.getElementById('blackCountBadge');
                     if (elBlk) elBlk.innerText = `${blk}/16 ĐEN`;
+                }
+            } else if (raw.startsWith('MAP_INFO:')) {
+                const parts = raw.substring(9).split(',');
+                const m_idx = parseInt(parts[0]);
+                userMaps[m_idx] = [];
+            } else if (raw.startsWith('WP:')) {
+                const parts = raw.substring(3).split(',');
+                const m_idx = parseInt(parts[0]);
+                const wp = {
+                    ticks: parseInt(parts[2]),
+                    speed: parseInt(parts[3]),
+                    action: parseInt(parts[4])
+                };
+                if (!userMaps[m_idx]) userMaps[m_idx] = [];
+                userMaps[m_idx].push(wp);
+                if (m_idx === activeMap) {
+                    renderWpTable();
                 }
             } else if (raw.startsWith('LOG:RACE_FINISH:')) {
                 const finishSec = parseFloat(raw.substring(16));
@@ -825,6 +850,7 @@
             const ki = document.getElementById('cfgKi').value;
             const kd = document.getElementById('cfgKd').value;
             const spd = document.getElementById('cfgSpeed').value;
+            const turn = document.getElementById('cfgTurnSpeed').value || 130;
 
             if (btn) {
                 btn.style.background = '#0284c7';
@@ -833,7 +859,7 @@
                 btn.innerText = '⏳ ĐANG GỬI XUỐNG XE...';
             }
 
-            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}`);
+            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
             await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
@@ -889,6 +915,9 @@
                             <option value="2" ${w.action === 2 ? 'selected' : ''}>Ép Phải (Lượn Sóng)</option>
                             <option value="3" ${w.action === 3 ? 'selected' : ''}>Khóa Thẳng</option>
                             <option value="4" ${w.action === 4 ? 'selected' : ''}>Phanh Đích</option>
+                            <option value="5" ${w.action === 5 ? 'selected' : ''}>Rẽ Vuông Trái 90° (Ngã 3 T)</option>
+                            <option value="6" ${w.action === 6 ? 'selected' : ''}>Rẽ Vuông Phải 90° (Ngã 3 T)</option>
+                            <option value="7" ${w.action === 7 ? 'selected' : ''}>Bứt Tốc Uốn Lượn (Boost)</option>
                         </select>
                     </td>
                     <td><button style="background:none; border:none; color:var(--accent-red); cursor:pointer; font-weight:800;" onclick="delWp(${i})">✖</button></td>
