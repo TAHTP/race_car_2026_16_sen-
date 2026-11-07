@@ -27,8 +27,7 @@ typedef struct {
     int16_t baseSpeed;
     int16_t maxSpeed;
     int16_t minSpeed;
-    int16_t turnOutSpeed; // Bánh ngoài khi bẻ góc vuông 90° (PWM: 80 - 220)
-    int16_t turnInSpeed;  // Bánh trong khi bẻ góc vuông 90° (PWM: -150 - +150)
+    int16_t turnSpeed;   // Lực bẻ cua 90° / Diode (PWM: 90 - 180)
 } PID_Config_t;
 
 // =================== HÀM GIAO TIẾP (API) ===================
@@ -49,13 +48,10 @@ void pid_set_tunings(float kp, float ki, float kd);
 void pid_set_base_speed(int16_t speed);
 
 /**
- * @brief Cập nhật lực bẻ cua 90° / Diode (Bánh ngoài & Bánh trong độc lập)
+ * @brief Cập nhật lực bẻ cua 90° / Diode (90 - 200)
  */
-void pid_set_turn_speeds(int16_t outSpeed, int16_t inSpeed);
 void pid_set_turn_speed(int16_t speed);
 int16_t pid_get_turn_speed(void);
-int16_t pid_get_turn_out_speed(void);
-int16_t pid_get_turn_in_speed(void);
 
 /**
  * @brief Bật/Tắt chế độ tự động chạy PID

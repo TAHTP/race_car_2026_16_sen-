@@ -20,8 +20,7 @@ static PID_Config_t pidConfig = {
     .baseSpeed = 120,
     .maxSpeed = 220,
     .minSpeed = -115,
-    .turnOutSpeed = 120,
-    .turnInSpeed = 20
+    .turnSpeed = 130
 };
 
 static bool autoMode = false;
@@ -78,26 +77,12 @@ void pid_set_base_speed(int16_t speed) {
     pidConfig.baseSpeed = clamp_int16(speed, 0, 255);
 }
 
-void pid_set_turn_speeds(int16_t outSpeed, int16_t inSpeed) {
-    pidConfig.turnOutSpeed = clamp_int16(outSpeed, 40, 255);
-    pidConfig.turnInSpeed = clamp_int16(inSpeed, -220, 220);
-}
-
 void pid_set_turn_speed(int16_t speed) {
-    pidConfig.turnOutSpeed = clamp_int16(speed, 40, 255);
-    pidConfig.turnInSpeed = 20;
+    pidConfig.turnSpeed = clamp_int16(speed, 60, 220);
 }
 
 int16_t pid_get_turn_speed(void) {
-    return pidConfig.turnOutSpeed;
-}
-
-int16_t pid_get_turn_out_speed(void) {
-    return pidConfig.turnOutSpeed;
-}
-
-int16_t pid_get_turn_in_speed(void) {
-    return pidConfig.turnInSpeed;
+    return pidConfig.turnSpeed;
 }
 
 void pid_set_sector_action(uint8_t action) {
@@ -282,7 +267,7 @@ void pid_line_follow_step(void) {
     }
 
     // =========================================================================
-    // XỬ LÝ CHỐT CUA GÓC VUÔNG 90 ĐỘ (BÁNH NGOÀI - BÁNH TRONG ĐỘC LẬP)
+    // XỬ LÝ CHỐT CUA GÓC VUÔNG 90 ĐỘ (PIVOT SPIN CỰC MẠNH)
     // =========================================================================
     if (s_corner_latch != 0) {
         unsigned long latchElapsed = millis() - s_corner_latch_time;
@@ -294,17 +279,15 @@ void pid_line_follow_step(void) {
             s_corner_latch = 0;
             integralError = 0.0f;
             lastError = 0.0f;
-            int16_t vmin = (pidConfig.baseSpeed > 80) ? (pidConfig.baseSpeed * 6 / 10) : 50;
-            s_ramped_base = (float)vmin;
         } else {
-            int16_t t_out = pidConfig.turnOutSpeed;
-            int16_t t_in  = pidConfig.turnInSpeed;
+            int16_t t_fwd = pidConfig.turnSpeed;
+            int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
             if (s_corner_latch == 1) {
-                // Xoay góc vuông Trái: Bánh trái (trong) = t_in, bánh phải (ngoài) = t_out
-                motor_set_speeds(t_in, t_out);
+                // Xoay góc vuông Trái: Bánh trái giật lùi, bánh phải phóng tới
+                motor_set_speeds(t_rev, t_fwd);
             } else {
-                // Xoay góc vuông Phải: Bánh trái (ngoài) = t_out, bánh trong = t_in
-                motor_set_speeds(t_out, t_in);
+                // Xoay góc vuông Phải: Bánh trái phóng tới, bánh phải giật lùi
+                motor_set_speeds(t_fwd, t_rev);
             }
             return;
         }
@@ -317,14 +300,15 @@ void pid_line_follow_step(void) {
     // Xác định trạng thái
     currentCase = pid_detect_case(position, blackCount);
 
+    int16_t t_fwd = pidConfig.turnSpeed;
+    int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
+
     // Nếu vừa kích hoạt chốt cua góc vuông trong pid_detect_case -> Thực thi ngay
     if (s_corner_latch != 0) {
-        int16_t t_out = pidConfig.turnOutSpeed;
-        int16_t t_in  = pidConfig.turnInSpeed;
         if (s_corner_latch == 1) {
-            motor_set_speeds(t_in, t_out);
+            motor_set_speeds(t_rev, t_fwd);
         } else {
-            motor_set_speeds(t_out, t_in);
+            motor_set_speeds(t_fwd, t_rev);
         }
         return;
     }
@@ -355,7 +339,7 @@ void pid_line_follow_step(void) {
             if (integralError < -150.0f) integralError = -150.0f;
             float iTerm = pidConfig.Ki * integralError;
 
-            // 3. Khâu D giảm chấn mạnh (Kd = 20.0 triệt tiêu hoàn toàn lắc lư đuôi xe)
+            // 3. Khâu D giảm chấn mạnh (Kd = 10.0 triệt tiêu hoàn toàn lắc lư đuôi xe)
             float deltaErr = error - lastError;
             lastError = error;
             float dTerm = pidConfig.Kd * deltaErr;
@@ -363,51 +347,42 @@ void pid_line_follow_step(void) {
             // Tổng giá trị bù lái (Correction)
             lastCorrection = pTerm + iTerm + dTerm;
 
-            // 4. Phân phối tốc độ ra 2 bánh có kiểm soát gia tốc (Speed Profiling theo đàn anh):
+            // 4. Phân phối tốc độ ra 2 bánh:
             int16_t leftSpeed = 0;
             int16_t rightSpeed = 0;
 
             if (pidConfig.baseSpeed > 0) {
-                // Vận tốc sàn khi ôm cua gắt (60% baseSpeed, tối thiểu 45)
-                int16_t vmin = (pidConfig.baseSpeed > 80) ? (pidConfig.baseSpeed * 6 / 10) : 50;
-                if (vmin < 45) vmin = 45;
-
-                // Tính hệ số cong/lắc f từ 0.0 (thẳng tắp) đến 1.0 (cua gắt)
-                // e thang [-75, 75]: chia 30.0f
-                // steer thang [-150, 150]: chia 80.0f
-                float f_err = absErr / 30.0f;
-                float f_steer = fabsf(lastCorrection) / 80.0f;
-                float f = (f_err > f_steer) ? f_err : f_steer;
-                if (f > 1.0f) f = 1.0f;
-
-                // Tốc độ mục tiêu theo độ cong của đường
-                float targetSpeed = (float)pidConfig.baseSpeed - (float)(pidConfig.baseSpeed - vmin) * f;
-
-                // DẬP GA TỨC THÌ KHI VÀO CUA / TĂNG TỐC MƯỢT KHI THẲNG (ACCEL CONTROL):
+                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up): Tăng dần tốc độ từ 38 lên baseSpeed trong ~200ms
                 if (s_ramped_base < 38.0f) {
                     s_ramped_base = 38.0f;
                 }
-                if (targetSpeed < s_ramped_base) {
-                    // Giảm tốc tức thì để không bao giờ bị văng cua
-                    s_ramped_base = targetSpeed;
-                } else {
-                    // Tăng tốc mượt: chu kỳ 2ms, mỗi 2ms tăng 0.7 PWM (~350 PWM/s)
-                    s_ramped_base += 0.7f;
-                    if (s_ramped_base > targetSpeed) s_ramped_base = targetSpeed;
+                if (s_ramped_base < (float)pidConfig.baseSpeed) {
+                    s_ramped_base += 1.0f; // Mỗi chu kỳ 2ms tăng 1 PWM
+                    if (s_ramped_base > (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
+                } else if (s_ramped_base > (float)pidConfig.baseSpeed) {
+                    s_ramped_base -= 2.0f;
+                    if (s_ramped_base < (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
                 }
 
-                int16_t currentBase = (int16_t)s_ramped_base;
+                // Giảm tốc ôm cua chủ động (Dynamic Corner Drag)
+                int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
+                if (currentBase < 40) currentBase = 40;
 
-                // Lực bẻ lái phụ (Steer Boost) khi cua rất gắt giống code đàn anh
-                int16_t steerBoost = 0;
-                if (lastCorrection > 70.0f) {
-                    steerBoost = 15;
-                } else if (lastCorrection < -70.0f) {
-                    steerBoost = -15;
+                // 2. BÙ GA THÔNG MINH THEO ENCODER (Sensor-Gated Anti-Stall Boost)
+                // ĐIỀU KIỆN AN TOÀN: Chỉ bù khi xe đã đề-pa xong VÀ 16 mắt xác nhận đang nằm trên vạch line!
+                int16_t auto_boost = 0;
+                if (s_ramped_base >= (float)pidConfig.baseSpeed * 0.85f && blackCount >= 1) {
+                    float v_real = (fabsf(encoder_get_speed_L_mms()) + fabsf(encoder_get_speed_R_mms())) * 0.5f;
+                    float v_expected = (float)currentBase * 9.5f; // Vận tốc kỳ vọng mm/s
+                    if (v_real < v_expected * 0.70f) { // Bị sụt > 30% do pin yếu hoặc lực cản cua/dốc
+                        float deficit = (v_expected * 0.70f) - v_real;
+                        auto_boost = (int16_t)(deficit * 0.035f);
+                        if (auto_boost > 28) auto_boost = 28; // Giới hạn trần tối đa +28 PWM để an toàn tuyệt đối
+                    }
                 }
 
-                leftSpeed  = currentBase + (int16_t)lastCorrection + (steerBoost > 0 ? steerBoost : 0);
-                rightSpeed = currentBase - (int16_t)lastCorrection + (steerBoost < 0 ? -steerBoost : 0);
+                leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
+                rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
@@ -427,12 +402,12 @@ void pid_line_follow_step(void) {
         // CASE: GÓC VUÔNG 90 ĐỘ TRÁI / PHẢI
         // =====================================================================
         case LINE_CASE_CORNER_LEFT: {
-            motor_set_speeds(pidConfig.turnInSpeed, pidConfig.turnOutSpeed);
+            motor_set_speeds(t_rev, t_fwd);
             break;
         }
 
         case LINE_CASE_CORNER_RIGHT: {
-            motor_set_speeds(pidConfig.turnOutSpeed, pidConfig.turnInSpeed);
+            motor_set_speeds(t_fwd, t_rev);
             break;
         }
 
@@ -448,20 +423,17 @@ void pid_line_follow_step(void) {
                 break;
             }
 
-            int16_t t_out = pidConfig.turnOutSpeed;
-            int16_t t_rev = (pidConfig.turnInSpeed < 0) ? pidConfig.turnInSpeed : - (int16_t)(pidConfig.turnOutSpeed * 70 / 100);
-
             // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối với lực mạnh
             if (lastKnownDirection < 0 || lastKnownPosition < -5.0f || lastError < -5.0f) {
-                motor_set_speeds(t_rev, t_out); // Giật xoay mạnh tìm vạch bên trái
+                motor_set_speeds(t_rev, t_fwd); // Giật xoay mạnh tìm vạch bên trái
             } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f || lastError > 5.0f) {
-                motor_set_speeds(t_out, t_rev); // Giật xoay mạnh tìm vạch bên phải
+                motor_set_speeds(t_fwd, t_rev); // Giật xoay mạnh tìm vạch bên phải
             } else {
                 // Nếu hướng = 0 (trước đó đi thẳng), dùng lastKnownPosition để quyết định xoay
                 if (lastKnownPosition <= 0.0f) {
-                    motor_set_speeds(t_rev, t_out);
+                    motor_set_speeds(t_rev, t_fwd);
                 } else {
-                    motor_set_speeds(t_out, t_rev);
+                    motor_set_speeds(t_fwd, t_rev);
                 }
             }
             break;
