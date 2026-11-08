@@ -673,6 +673,10 @@
                 document.getElementById('btnConnect').classList.add('connected');
                 document.getElementById('bleText').innerText = '✅ ĐÃ KẾT NỐI';
                 log('✅ Kết nối thành công!');
+
+                // Tự động đồng bộ Map đang chọn trên Web xuống xe
+                await new Promise(r => setTimeout(r, 200));
+                await sendCmd(`CMD:MAP:${activeMap}`);
             } catch (e) {
                 log('❌ Lỗi BLE: ' + e);
             }
@@ -856,7 +860,6 @@
             }
 
             await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
-            await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
             setTimeout(() => {
@@ -902,8 +905,8 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight: 800;">${i}</td>
-                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" onchange="editWp(${i}, 'ticks', this.value)"></td>
-                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" onchange="editWp(${i}, 'speed', this.value)"></td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" oninput="editWp(${i}, 'ticks', this.value)"></td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" oninput="editWp(${i}, 'speed', this.value)"></td>
                     <td>
                         <select class="form-input" style="padding: 2px; font-size: 0.72rem;" onchange="editWp(${i}, 'action', this.value)">
                             <option value="0" ${w.action === 0 ? 'selected' : ''}>PID chuẩn</option>
@@ -957,13 +960,24 @@
         async function saveMapToCar() {
             const list = userMaps[activeMap];
             log(`Đang lưu ${list.length} mốc Map ${activeMap + 1} vào xe...`);
-            await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
 
+            // 1. Kích hoạt xe chuyển sang đúng Map này
+            await sendCmd(`CMD:MAP:${activeMap}`);
+            await new Promise(r => setTimeout(r, 60));
+
+            // 2. Xóa các mốc cũ của Map này trong xe
+            await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
+            await new Promise(r => setTimeout(r, 60));
+
+            // 3. Nạp từng mốc với khoảng nghỉ an toàn chống nghẽn gói BLE
             for (let i = 0; i < list.length; i++) {
                 const w = list[i];
-                await new Promise(r => setTimeout(r, 40));
                 await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
+                await new Promise(r => setTimeout(r, 45));
             }
+
+            // 4. Lưu vĩnh viễn vào Flash NVS
+            await new Promise(r => setTimeout(r, 50));
             await sendCmd('CMD:SAVE');
             log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);
         }
