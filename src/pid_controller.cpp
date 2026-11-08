@@ -40,6 +40,7 @@ static float lastKnownPosition = 0.0f;// Vị trí vạch cuối cùng còn nhì
 // Cơ chế chốt cua góc vuông 90° (Active 90° Corner Latch)
 static uint8_t s_corner_latch = 0; // 0: None, 1: Turn Left, 2: Turn Right
 static unsigned long s_corner_latch_time = 0;
+static unsigned long s_corner_brake_until = 0; // Thời điểm kết thúc phanh dập quán tính xoay (20ms)
 
 static uint8_t s_sector_action = 0; // 0: Normal, 1: Force Left, 2: Force Right, 3: Lock Straight, 4: Brake
 
@@ -100,6 +101,7 @@ void pid_set_auto_mode(bool enable) {
     lastKnownPosition = 0.0f;
     s_corner_latch = 0;
     s_corner_latch_time = 0;
+    s_corner_brake_until = 0;
     s_sector_action = 0;
     if (!autoMode) {
         currentCase = LINE_CASE_STOPPED;
@@ -271,6 +273,12 @@ void pid_line_follow_step(void) {
         return;
     }
 
+    // 1. Phanh dập tắt quán tính xoay sau cua vuông 90° (20ms)
+    if (s_corner_brake_until > millis()) {
+        motor_set_speeds(0, 0); // Active Short Brake ghì đứng hình thân xe
+        return;
+    }
+
     // =========================================================================
     // XỬ LÝ CHỐT CUA GÓC VUÔNG 90 ĐỘ (PIVOT SPIN CỰC MẠNH)
     // =========================================================================
@@ -284,6 +292,12 @@ void pid_line_follow_step(void) {
             s_corner_latch = 0;
             integralError = 0.0f;
             lastError = 0.0f;
+            if (center_locked) {
+                // Kích hoạt 20ms phanh ghì cứng 2 bánh dập tắt triệt để trớn xoay của thân xe
+                s_corner_brake_until = millis() + 20;
+                motor_set_speeds(0, 0);
+                return;
+            }
         } else {
             int16_t t_fwd = pidConfig.turnSpeed;
             int16_t t_rev = - (int16_t)(pidConfig.turnSpeed * 80 / 100);
@@ -337,6 +351,14 @@ void pid_line_follow_step(void) {
             // Lệch nhiều (|error| > 8): tự động tăng phản xạ bẻ lái kéo đầu xe về gấp
             float pGain = pidConfig.Kp * (1.0f + 0.012f * absErr);
             float pTerm = pGain * error;
+
+            // BỔ SUNG LỰC HÚT TÂM CHỦ ĐỘNG (Active Centering Boost):
+            // Khi xe chớm lệch (0.5 đến 6.0), tăng thêm độ nhạy vi sai để thắng ma sát tĩnh cơ khí
+            if (absErr > 0.5f && absErr <= 6.0f) {
+                float core_ratio = (absErr <= 3.0f) ? (absErr - 0.5f) / 2.5f : (6.0f - absErr) / 3.0f;
+                float boost = ((error > 0.0f) ? 1.0f : -1.0f) * (14.0f * core_ratio);
+                pTerm += boost;
+            }
 
             // 2. Khâu I có Anti-windup (kẹp trong khoảng [-150, 150])
             integralError += error * dt;
