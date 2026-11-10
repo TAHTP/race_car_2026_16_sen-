@@ -627,6 +627,34 @@
             }
         }
 
+        // LƯU / KHÔI PHỤC THÔNG SỐ PID & TỐC ĐỘ (tự nhớ sau khi tắt mở lại)
+        const CFG_IDS = ['cfgKp', 'cfgKi', 'cfgKd', 'cfgSpeed', 'cfgTurnSpeed'];
+        const CFG_KEY = 'racecar_cfg_v1';
+        function saveCfg() {
+            try {
+                const o = {};
+                CFG_IDS.forEach(id => { o[id] = document.getElementById(id).value; });
+                localStorage.setItem(CFG_KEY, JSON.stringify(o));
+            } catch (e) { console.error('Lỗi ghi cfg:', e); }
+        }
+        function loadCfg() {
+            try {
+                const o = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
+                if (o) CFG_IDS.forEach(id => { if (o[id] !== undefined && o[id] !== '') document.getElementById(id).value = o[id]; });
+                const m = parseInt(localStorage.getItem('racecar_active_map'));
+                if (m >= 0 && m <= 2) {
+                    activeMap = m;
+                    document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === m));
+                }
+            } catch (e) { console.error('Lỗi đọc cfg:', e); }
+            CFG_IDS.forEach(id => {
+                const el = document.getElementById(id);
+                el.addEventListener('input', saveCfg);
+                el.addEventListener('change', saveCfg);
+            });
+        }
+        loadCfg();
+
         // Khởi tạo 16 ô cảm biến
         const row = document.getElementById('sensorRow');
         for (let i = 0; i < 16; i++) {
@@ -890,6 +918,7 @@
         // ================= WAYPOINT TABLE (CHỤP THẬT) =================
         function switchMap(idx) {
             activeMap = idx;
+            try { localStorage.setItem('racecar_active_map', idx); } catch (e) {}
             document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
             renderWpTable();
             sendCmd(`CMD:MAP:${idx}`);
