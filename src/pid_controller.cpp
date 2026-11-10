@@ -368,21 +368,9 @@ void pid_line_follow_step(void) {
                 int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
                 if (currentBase < 40) currentBase = 40;
 
-                // 2. BÙ GA THÔNG MINH THEO ENCODER (Sensor-Gated Anti-Stall Boost)
-                // ĐIỀU KIỆN AN TOÀN: Chỉ bù khi xe đã đề-pa xong VÀ 16 mắt xác nhận đang nằm trên vạch line!
-                int16_t auto_boost = 0;
-                if (s_ramped_base >= (float)pidConfig.baseSpeed * 0.85f && blackCount >= 1) {
-                    float v_real = (fabsf(encoder_get_speed_L_mms()) + fabsf(encoder_get_speed_R_mms())) * 0.5f;
-                    float v_expected = (float)currentBase * 9.5f; // Vận tốc kỳ vọng mm/s
-                    if (v_real < v_expected * 0.70f) { // Bị sụt > 30% do pin yếu hoặc lực cản cua/dốc
-                        float deficit = (v_expected * 0.70f) - v_real;
-                        auto_boost = (int16_t)(deficit * 0.035f);
-                        if (auto_boost > 28) auto_boost = 28; // Giới hạn trần tối đa +28 PWM để an toàn tuyệt đối
-                    }
-                }
-
-                leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
-                rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
+                // Tắt hoàn toàn auto_boost để xe giữ đúng tốc độ, không tự nhồi ga khi ôm cua làm văng xe
+                leftSpeed  = currentBase + (int16_t)lastCorrection;
+                rightSpeed = currentBase - (int16_t)lastCorrection;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
