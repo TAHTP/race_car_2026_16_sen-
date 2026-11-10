@@ -102,6 +102,21 @@ const Waypoint_t* map_get_waypoint(uint8_t map_idx, uint8_t wp_idx) {
     return NULL;
 }
 
+int8_t map_get_upcoming_force(uint32_t current_ticks, uint32_t lookahead_ticks) {
+    MapProfile_t *prof = &s_maps[s_selected_map];
+    for (uint8_t i = 0; i < prof->count; i++) {
+        uint32_t st = prof->wps[i].start_ticks;
+        if (st > current_ticks) { // mốc kế tiếp chưa tới
+            if (st - current_ticks > lookahead_ticks) return 0;
+            uint8_t act = prof->wps[i].action;
+            if (act != ACTION_FORCE_LEFT && act != ACTION_FORCE_RIGHT) return 0;
+            if (s_is_right_lane) act = (act == ACTION_FORCE_LEFT) ? ACTION_FORCE_RIGHT : ACTION_FORCE_LEFT;
+            return (act == ACTION_FORCE_LEFT) ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
 void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, uint8_t *out_wp_idx) {
     MapProfile_t *prof = &s_maps[s_selected_map];
 

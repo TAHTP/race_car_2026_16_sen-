@@ -6,6 +6,7 @@
 #include "pid_controller.h"
 #include "map_manager.h"
 #include "ble_handler.h"
+#include "run_log.h"
 
 // Biến chia sẻ giữa 2 Core
 static volatile bool s_run_requested = false;
@@ -13,6 +14,9 @@ static volatile float s_live_line_pos = 0.0f; // Vị trí tim line thời gian 
 static uint8_t s_active_wp_idx = 0;
 static uint8_t s_active_action = 0;
 static int16_t s_active_speed = 120;
+
+#define APPROACH_TICKS      120  // Vùng báo trước mốc ép (~120 xung ≈ 12 cm)
+#define APPROACH_SPEED_PCT  75   // Giảm còn 75% tốc độ mốc khi tiếp cận đoạn ép
 
 // Task handle
 static TaskHandle_t s_control_task_handle = NULL;
@@ -120,6 +124,7 @@ void controlTask(void *pvParameters) {
             if (mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) {
                 pid_set_auto_mode(true);
                 s_race_start_us = esp_timer_get_time();
+                runlog_start(); // Xóa log cũ, bắt đầu ghi lượt chạy mới
                 ble_send_string("LOG:AUTO_START");
             } else {
                 pid_set_auto_mode(false);
@@ -214,6 +219,18 @@ void controlTask(void *pvParameters) {
                 }
             }
 
+            // Vùng tiếp cận: trước mốc ép Trái/Phải ~APPROACH_TICKS xung -> giảm tốc và hướng đầu xe về phía đó
+            int8_t approach = 0;
+            if (mode == CAR_MODE_RACE && act != ACTION_FORCE_LEFT && act != ACTION_FORCE_RIGHT) {
+                approach = map_get_upcoming_force(avg_ticks, APPROACH_TICKS);
+                if (approach != 0) {
+                    int16_t slow = (int16_t)(tgt_spd * APPROACH_SPEED_PCT / 100);
+                    if (slow < 60) slow = 60;
+                    if (slow < tgt_spd) tgt_spd = slow;
+                }
+            }
+            pid_set_approach_dir(approach);
+
             s_active_speed = tgt_spd;
             s_active_action = act;
             s_active_wp_idx = wp_idx;
@@ -224,10 +241,18 @@ void controlTask(void *pvParameters) {
 
             // Thực thi 1 bước PID
             pid_line_follow_step();
+
+            // Ghi log lượt chạy vào RAM (200 dòng/giây), gửi qua SPP sau khi xe dừng
+            runlog_record(cur_pos, pid_get_correction(),
+                          motor_get_left_speed(), motor_get_right_speed(),
+                          encoder_get_speed_L_mms(), encoder_get_speed_R_mms(),
+                          sensor_get_line_bits(), avg_ticks,
+                          (uint8_t)pid_get_current_case(), act, wp_idx, tgt_spd);
         } else {
             // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
             s_finish_debounce = 0;
             pid_set_sector_action(ACTION_NORMAL);
+            pid_set_approach_dir(0);
             s_active_wp_idx = 0;
             s_active_action = ACTION_NORMAL;
             motor_stop();
@@ -242,7 +267,17 @@ void controlTask(void *pvParameters) {
 // ================================================================
 void bleTask(void *pvParameters) {
     static uint32_t s_last_wait_log = 0;
+    static uint32_t s_last_telemetry = 0;
     for (;;) {
+        // Gửi log lượt chạy qua Bluetooth Classic SPP sau khi xe dừng
+        CarRunMode_t run_mode = car_get_run_mode();
+        bool log_busy = runlog_service(run_mode == CAR_MODE_SCAN || run_mode == CAR_MODE_RACE);
+        if (log_busy && millis() - s_last_telemetry < 150) {
+            vTaskDelay(pdMS_TO_TICKS(5)); // đang gửi log: quay lại gửi tiếp ngay, vẫn giữ nhịp telemetry 150ms
+            continue;
+        }
+        s_last_telemetry = millis();
+
         // Bắn dữ liệu Telemetry về Web mỗi 150ms (chuẩn nhịp mượt theo bản tham khảo)
         if (ble_is_connected()) {
             int32_t tl = (int32_t)encoder_get_ticks_L();
@@ -263,7 +298,8 @@ void bleTask(void *pvParameters) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(150)); // 150ms/lần (~7Hz) cực kỳ thông thoáng và không nghẽn BLE
+        // 150ms/lần (~7Hz) khi rảnh; đang gửi log thì chỉ nghỉ 5ms để gửi tiếp
+        vTaskDelay(pdMS_TO_TICKS(log_busy ? 5 : 150));
     }
 }
 
@@ -287,6 +323,9 @@ void setup() {
 
     // 4. Khởi tạo BLE Server với tên nhận diện
     ble_init("RACECAR_16SEN");
+
+    // 4b. Bật Bluetooth Classic SPP để gửi log lượt chạy (phải gọi sau ble_init)
+    runlog_init("RACECAR_16SEN");
 
     Serial.println("\n=======================================================");
     Serial.println("  🏎️  XE DÒ LINE 16 MẮT 2026 - DUAL-CORE FREERTOS + BLE");
@@ -312,7 +351,7 @@ void setup() {
     xTaskCreatePinnedToCore(
         bleTask,
         "BleTask",
-        4096,
+        6144, // tăng stack vì task này gửi thêm log SPP
         NULL,
         2,
         &s_ble_task_handle,

@@ -510,6 +510,21 @@
         </div>
     </div>
 
+    <!-- LOG LƯỢT CHẠY QUA BLUETOOTH CLASSIC SPP (Web Serial) -->
+    <div class="card">
+        <div class="card-title">
+            <span>LOG LƯỢT CHẠY (200 DÒNG/GIÂY)</span>
+            <span id="runLogBadge">0 DÒNG</span>
+        </div>
+        <div class="form-row">
+            <button id="btnLogPort" class="btn-sub primary" style="flex: 1;" onclick="toggleLogPort()">🔌 KẾT NỐI CỔNG LOG</button>
+            <button class="btn-sub" onclick="requestLogDump()">🔁 GỬI LẠI</button>
+            <button class="btn-sub success" onclick="downloadRunLog()">💾 CSV</button>
+        </div>
+        <div id="runLogStatus" style="font-size: 0.7rem; color: var(--text-dim); margin: 6px 0;">Ghép đôi Bluetooth với RACECAR_16SEN trước, rồi bấm kết nối và chọn cổng của xe. Log tự về sau mỗi lượt chạy.</div>
+        <pre id="runLogBox" style="font-size: 0.62rem; font-family: monospace; color: var(--text-main); height: 220px; overflow: auto; margin: 0; white-space: pre;"></pre>
+    </div>
+
     <!-- LOG GIAO TIẾP -->
     <div class="card">
         <div class="card-title">NHẬT KÝ LỆNH</div>
@@ -1010,6 +1025,173 @@
             await sendCmd('CMD:SAVE');
             log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);
         }
+
+        // ================= LOG LƯỢT CHẠY QUA BLUETOOTH CLASSIC SPP (WEB SERIAL) =================
+        // Xe ghi 200 dòng/giây vào RAM khi chạy, dừng xe là tự gửi CSV qua cổng serial Bluetooth.
+        const RUNLOG_KEY = 'racecar_last_runlog_v1';
+        const CASE_NAMES = ['PID', 'MAT_LINE', 'VACH_NGANG', 'NET_DUT', 'CUA_TRAI', 'CUA_PHAI', 'DUNG'];
+        const ACT_NAMES = ['-', 'EP_TRAI', 'EP_PHAI', 'KHOA_THANG', 'PHANH'];
+        let logPort = null;
+        let logReader = null;
+        let runLogRows = [];      // mỗi phần tử là 1 dòng CSV thô từ xe
+        let runLogMeta = null;    // { total, dropped, periodMs }
+        let runLogReceiving = false;
+
+        function setRunLogStatus(msg, color) {
+            const el = document.getElementById('runLogStatus');
+            el.innerText = msg;
+            el.style.color = color || 'var(--text-dim)';
+        }
+
+        async function toggleLogPort() {
+            const btn = document.getElementById('btnLogPort');
+            if (logPort) {
+                const port = logPort;
+                logPort = null;
+                try { if (logReader) await logReader.cancel(); } catch (e) {}
+                try { await port.close(); } catch (e) {}
+                btn.innerText = '🔌 KẾT NỐI CỔNG LOG';
+                setRunLogStatus('Đã ngắt cổng log.');
+                return;
+            }
+            if (!navigator.serial) {
+                setRunLogStatus('Trình duyệt này không hỗ trợ Web Serial. Dùng Chrome hoặc Edge trên máy tính.', 'var(--accent-red)');
+                return;
+            }
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                logPort = port;
+                btn.innerText = '❌ NGẮT CỔNG LOG';
+                setRunLogStatus('Đã mở cổng log. Chạy xe xong log sẽ tự về, hoặc bấm GỬI LẠI.', 'var(--accent-green)');
+                readLogLoop(port);
+            } catch (e) {
+                setRunLogStatus('Không mở được cổng: ' + e.message, 'var(--accent-red)');
+            }
+        }
+
+        async function readLogLoop(port) {
+            const decoder = new TextDecoder();
+            let buf = '';
+            try {
+                logReader = port.readable.getReader();
+                for (;;) {
+                    const { value, done } = await logReader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    let i;
+                    while ((i = buf.indexOf('\n')) >= 0) {
+                        onRunLogLine(buf.slice(0, i).trim());
+                        buf = buf.slice(i + 1);
+                    }
+                }
+            } catch (e) {
+                if (logPort === port) setRunLogStatus('Mất kết nối cổng log: ' + e.message, 'var(--accent-red)');
+            } finally {
+                try { logReader.releaseLock(); } catch (e) {}
+                logReader = null;
+                if (logPort === port) {
+                    logPort = null;
+                    try { await port.close(); } catch (e) {}
+                    document.getElementById('btnLogPort').innerText = '🔌 KẾT NỐI CỔNG LOG';
+                }
+            }
+        }
+
+        function onRunLogLine(line) {
+            if (!line) return;
+            if (line.startsWith('LOG_BEGIN,')) {
+                const p = line.split(',');
+                runLogMeta = { total: parseInt(p[1]) || 0, dropped: parseInt(p[2]) || 0, periodMs: parseInt(p[3]) || 5 };
+                runLogRows = [];
+                runLogReceiving = true;
+                setRunLogStatus(`Đang nhận log: 0/${runLogMeta.total} dòng...`, 'var(--accent-yellow)');
+            } else if (line.startsWith('LOG_END')) {
+                runLogReceiving = false;
+                const missing = runLogMeta ? runLogMeta.total - runLogRows.length : 0;
+                let msg = `Đã nhận ${runLogRows.length} dòng.`;
+                if (missing > 0) msg += ` Thiếu ${missing} dòng, bấm GỬI LẠI.`;
+                if (runLogMeta && runLogMeta.dropped > 0) msg += ` Lượt chạy dài hơn bộ nhớ: mất ${runLogMeta.dropped} dòng đầu.`;
+                setRunLogStatus(msg, missing > 0 ? 'var(--accent-red)' : 'var(--accent-green)');
+                renderRunLog();
+                try { localStorage.setItem(RUNLOG_KEY, JSON.stringify({ meta: runLogMeta, rows: runLogRows })); } catch (e) {}
+            } else if (line === 'LOG_EMPTY') {
+                setRunLogStatus('Xe chưa có log nào (chưa chạy lượt nào từ lúc bật nguồn).');
+            } else if (runLogReceiving && /^\d/.test(line)) {
+                runLogRows.push(line);
+                if (runLogRows.length % 200 === 0) {
+                    setRunLogStatus(`Đang nhận log: ${runLogRows.length}/${runLogMeta.total} dòng...`, 'var(--accent-yellow)');
+                }
+            }
+        }
+
+        async function requestLogDump() {
+            if (!logPort || !logPort.writable) {
+                setRunLogStatus('Chưa kết nối cổng log.', 'var(--accent-red)');
+                return;
+            }
+            const w = logPort.writable.getWriter();
+            try {
+                await w.write(new TextEncoder().encode('DUMP\n'));
+            } catch (e) {
+                setRunLogStatus('Không gửi được lệnh: ' + e.message, 'var(--accent-red)');
+            } finally {
+                w.releaseLock();
+            }
+        }
+
+        // Dòng thô: t_ms,pos,corr,pwmL,pwmR,vL,vR,mask,ticks,case,act,wp,base
+        function maskToEyes(mask) {
+            let s = '';
+            for (let i = 0; i < 16; i++) s += (mask & (1 << i)) ? '#' : '.';
+            return s;
+        }
+
+        function renderRunLog() {
+            document.getElementById('runLogBadge').innerText = runLogRows.length + ' DÒNG';
+            const pad = (v, n) => String(v).padStart(n);
+            const out = ['  t_ms    pos  corr  pwmL  pwmR    vL    vR  mat(0..15)        xung  base  moc  trang thai'];
+            for (const line of runLogRows) {
+                const p = line.split(',');
+                if (p.length < 13) continue;
+                const act = ACT_NAMES[parseInt(p[10])] || p[10];
+                out.push(pad(p[0], 6) + pad(p[1], 7) + pad(p[2], 6) + pad(p[3], 6) + pad(p[4], 6) + pad(p[5], 6) + pad(p[6], 6) +
+                    '  ' + maskToEyes(parseInt(p[7]) || 0) + pad(p[8], 6) + pad(p[12], 6) + pad(p[11], 5) +
+                    '  ' + (CASE_NAMES[parseInt(p[9])] || p[9]) + (act !== '-' ? ' / ' + act : ''));
+            }
+            document.getElementById('runLogBox').textContent = out.join('\n');
+        }
+
+        function downloadRunLog() {
+            if (!runLogRows.length) {
+                setRunLogStatus('Chưa có log để tải.', 'var(--accent-red)');
+                return;
+            }
+            const out = ['t_ms,pos,corr,pwmL,pwmR,vL_mms,vR_mms,mask,ticks,case,act,wp,base,case_name,act_name,eyes_0_15'];
+            for (const line of runLogRows) {
+                const p = line.split(',');
+                if (p.length < 13) continue;
+                out.push(line + ',' + (CASE_NAMES[parseInt(p[9])] || '') + ',' + (ACT_NAMES[parseInt(p[10])] || '') + ',' + maskToEyes(parseInt(p[7]) || 0));
+            }
+            const d = new Date();
+            const z = n => String(n).padStart(2, '0');
+            const name = `runlog_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.csv`;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([out.join('\n')], { type: 'text/csv' }));
+            a.download = name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+
+        // Khôi phục log lượt chạy gần nhất đã nhận (tắt mở lại trang không mất)
+        try {
+            const saved = JSON.parse(localStorage.getItem(RUNLOG_KEY) || 'null');
+            if (saved && Array.isArray(saved.rows)) {
+                runLogRows = saved.rows;
+                runLogMeta = saved.meta || null;
+                renderRunLog();
+            }
+        } catch (e) {}
 
         renderWpTable();
         updateBestLapDisplay();

@@ -42,6 +42,10 @@ static uint8_t s_corner_latch = 0; // 0: None, 1: Turn Left, 2: Turn Right
 static unsigned long s_corner_latch_time = 0;
 static unsigned long s_corner_brake_until = 0; // Thời điểm kết thúc phanh dập quán tính xoay (20ms)
 
+#define CENTER_PRIORITY   2   // Hệ số ưu tiên mắt 7, 8 khi ép Trái/Phải
+#define APPROACH_BIAS     6.0f // Độ lệch đích ngắm để hướng đầu xe về phía ép (đơn vị vị trí)
+static int8_t s_approach_dir = 0; // -1 Trái, +1 Phải, 0 tắt
+
 static uint8_t s_sector_action = 0; // 0: Normal, 1: Force Left, 2: Force Right, 3: Lock Straight, 4: Brake
 
 static inline int16_t clamp_int16(int16_t v, int16_t min_v, int16_t max_v) {
@@ -86,6 +90,10 @@ int16_t pid_get_turn_speed(void) {
     return pidConfig.turnSpeed;
 }
 
+void pid_set_approach_dir(int8_t dir) {
+    s_approach_dir = dir;
+}
+
 void pid_set_sector_action(uint8_t action) {
     s_sector_action = action;
 }
@@ -127,10 +135,13 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
 
     int start_i = 0;
     int end_i = N_SENSORS - 1;
-    if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Ép chỉ đọc nhánh trái
-        end_i = 8;
-    } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Ép chỉ đọc nhánh phải
-        start_i = 7;
+    bool force_mode = false;
+    if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Bỏ 6 mắt phải (10..15), giữ mắt 0..9
+        end_i = 9;
+        force_mode = true;
+    } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Bỏ 6 mắt trái (0..5), giữ mắt 6..15
+        start_i = 6;
+        force_mode = true;
     } else if (s_sector_action == 3) { // ACTION_LOCK_STRAIGHT: Chỉ đọc cụm mắt tâm (4..11), bỏ qua ngã 3/4 ở 2 bên rìa
         start_i = 4;
         end_i = 11;
@@ -146,8 +157,11 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
 
         // Lọc nhiễu nền: chỉ lấy tín hiệu thực sự có vạch đen (>= 150) và không phải mắt cô độc lẻ loi
         if (cal >= 150 && has_neighbor) {
-            sumCalibrated += cal;
-            sumWeights += (float)cal * SENSOR_WEIGHTS[i];
+            // Khi ép Trái/Phải: ưu tiên line ở 2 mắt giữa (7, 8) gấp CENTER_PRIORITY lần
+            uint32_t w = cal;
+            if (force_mode && (i == 7 || i == 8)) w = cal * CENTER_PRIORITY;
+            sumCalibrated += w;
+            sumWeights += (float)w * SENSOR_WEIGHTS[i];
             if (cal >= 500) {
                 count++;
             }
@@ -343,7 +357,8 @@ void pid_line_follow_step(void) {
         // CASE 1: BÁM LINE PID CHÍNH (Đường thẳng, cua mềm, cua gắt, cua chữ S)
         // =====================================================================
         case LINE_CASE_NORMAL_PID: {
-            float error = position; // -75.0 đến +75.0 (0.0 là chuẩn giữa tâm)
+            // Vùng tiếp cận đoạn ép: dịch đích ngắm sang phía ép để đầu xe hướng về đó (Trái = error âm)
+            float error = position + (float)s_approach_dir * APPROACH_BIAS; // -75.0 đến +75.0
             float absErr = fabsf(error);
 
             // 1. Khâu P phi tuyến (Non-linear P):
@@ -395,21 +410,9 @@ void pid_line_follow_step(void) {
                 int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
                 if (currentBase < 40) currentBase = 40;
 
-                // 2. BÙ GA THÔNG MINH THEO ENCODER (Sensor-Gated Anti-Stall Boost)
-                // ĐIỀU KIỆN AN TOÀN: Chỉ bù khi xe đã đề-pa xong VÀ 16 mắt xác nhận đang nằm trên vạch line!
-                int16_t auto_boost = 0;
-                if (s_ramped_base >= (float)pidConfig.baseSpeed * 0.85f && blackCount >= 1) {
-                    float v_real = (fabsf(encoder_get_speed_L_mms()) + fabsf(encoder_get_speed_R_mms())) * 0.5f;
-                    float v_expected = (float)currentBase * 9.5f; // Vận tốc kỳ vọng mm/s
-                    if (v_real < v_expected * 0.70f) { // Bị sụt > 30% do pin yếu hoặc lực cản cua/dốc
-                        float deficit = (v_expected * 0.70f) - v_real;
-                        auto_boost = (int16_t)(deficit * 0.035f);
-                        if (auto_boost > 28) auto_boost = 28; // Giới hạn trần tối đa +28 PWM để an toàn tuyệt đối
-                    }
-                }
-
-                leftSpeed  = currentBase + auto_boost + (int16_t)lastCorrection;
-                rightSpeed = currentBase + auto_boost - (int16_t)lastCorrection;
+                // (Đã bỏ auto_boost: không tự cộng thêm ga, tốc độ = đúng baseSpeed cài đặt)
+                leftSpeed  = currentBase + (int16_t)lastCorrection;
+                rightSpeed = currentBase - (int16_t)lastCorrection;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
