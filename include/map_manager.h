@@ -54,6 +54,9 @@ uint8_t map_get_waypoint_count(uint8_t map_idx);
 const Waypoint_t* map_get_waypoint(uint8_t map_idx, uint8_t wp_idx);
 
 // Hàm truy vấn thời gian thực cho bộ điều khiển PID (Core 1)
+// Báo trước: nếu mốc kế tiếp là ép Trái/Phải và còn <= lookahead_ticks xung thì trả -1 (Trái) / +1 (Phải), ngược lại 0.
+// Đã tính đảo hướng khi ở Làn Phải.
+int8_t map_get_upcoming_force(uint32_t current_ticks, uint32_t lookahead_ticks);
 void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, uint8_t *out_wp_idx);
 
 #ifdef __cplusplus

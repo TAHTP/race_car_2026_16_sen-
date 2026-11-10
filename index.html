@@ -510,6 +510,21 @@
         </div>
     </div>
 
+    <!-- LOG LƯỢT CHẠY (xe lưu trong RAM, dừng xe là tự gửi lên qua BLE) -->
+    <div class="card">
+        <div class="card-title">
+            <span>LOG LƯỢT CHẠY (200 DÒNG/GIÂY)</span>
+            <span id="runLogBadge">0 DÒNG</span>
+        </div>
+        <div class="form-row">
+            <button class="btn-sub primary" style="flex: 1;" onclick="requestLogDump()">🔁 TẢI LẠI LOG TỪ XE</button>
+            <button class="btn-sub" onclick="copyRunLog()">📋 COPY</button>
+            <button class="btn-sub success" onclick="downloadRunLog()">💾 CSV</button>
+        </div>
+        <div id="runLogStatus" style="font-size: 0.7rem; color: var(--text-dim); margin: 6px 0;">Xe chạy xong và dừng là log tự gửi về qua BLE.</div>
+        <pre id="runLogBox" style="font-size: 0.62rem; font-family: monospace; color: var(--text-main); height: 220px; overflow: auto; margin: 0; white-space: pre;"></pre>
+    </div>
+
     <!-- LOG GIAO TIẾP -->
     <div class="card">
         <div class="card-title">NHẬT KÝ LỆNH</div>
@@ -627,6 +642,34 @@
             }
         }
 
+        // LƯU / KHÔI PHỤC THÔNG SỐ PID & TỐC ĐỘ (tự nhớ sau khi tắt mở lại)
+        const CFG_IDS = ['cfgKp', 'cfgKi', 'cfgKd', 'cfgSpeed', 'cfgTurnSpeed'];
+        const CFG_KEY = 'racecar_cfg_v1';
+        function saveCfg() {
+            try {
+                const o = {};
+                CFG_IDS.forEach(id => { o[id] = document.getElementById(id).value; });
+                localStorage.setItem(CFG_KEY, JSON.stringify(o));
+            } catch (e) { console.error('Lỗi ghi cfg:', e); }
+        }
+        function loadCfg() {
+            try {
+                const o = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
+                if (o) CFG_IDS.forEach(id => { if (o[id] !== undefined && o[id] !== '') document.getElementById(id).value = o[id]; });
+                const m = parseInt(localStorage.getItem('racecar_active_map'));
+                if (m >= 0 && m <= 2) {
+                    activeMap = m;
+                    document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === m));
+                }
+            } catch (e) { console.error('Lỗi đọc cfg:', e); }
+            CFG_IDS.forEach(id => {
+                const el = document.getElementById(id);
+                el.addEventListener('input', saveCfg);
+                el.addEventListener('change', saveCfg);
+            });
+        }
+        loadCfg();
+
         // Khởi tạo 16 ô cảm biến
         const row = document.getElementById('sensorRow');
         for (let i = 0; i < 16; i++) {
@@ -673,6 +716,10 @@
                 document.getElementById('btnConnect').classList.add('connected');
                 document.getElementById('bleText').innerText = '✅ ĐÃ KẾT NỐI';
                 log('✅ Kết nối thành công!');
+
+                // Tự động đồng bộ Map đang chọn trên Web xuống xe
+                await new Promise(r => setTimeout(r, 200));
+                await sendCmd(`CMD:MAP:${activeMap}`);
             } catch (e) {
                 log('❌ Lỗi BLE: ' + e);
             }
@@ -696,6 +743,8 @@
         function onTelemetry(event) {
             const dec = new TextDecoder();
             const raw = dec.decode(event.target.value).trim();
+
+            if (handleRunLogPacket(raw)) return;
 
             if (raw.startsWith('T:')) {
                 // T:tl,tr,pos*10,pwm_l,pwm_r,map,wp,state,mask
@@ -856,7 +905,6 @@
             }
 
             await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
-            await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
             setTimeout(() => {
@@ -887,6 +935,7 @@
         // ================= WAYPOINT TABLE (CHỤP THẬT) =================
         function switchMap(idx) {
             activeMap = idx;
+            try { localStorage.setItem('racecar_active_map', idx); } catch (e) {}
             document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
             renderWpTable();
             sendCmd(`CMD:MAP:${idx}`);
@@ -902,8 +951,8 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight: 800;">${i}</td>
-                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" onchange="editWp(${i}, 'ticks', this.value)"></td>
-                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" onchange="editWp(${i}, 'speed', this.value)"></td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" oninput="editWp(${i}, 'ticks', this.value)"></td>
+                    <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" oninput="editWp(${i}, 'speed', this.value)"></td>
                     <td>
                         <select class="form-input" style="padding: 2px; font-size: 0.72rem;" onchange="editWp(${i}, 'action', this.value)">
                             <option value="0" ${w.action === 0 ? 'selected' : ''}>PID chuẩn</option>
@@ -957,16 +1006,172 @@
         async function saveMapToCar() {
             const list = userMaps[activeMap];
             log(`Đang lưu ${list.length} mốc Map ${activeMap + 1} vào xe...`);
-            await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
 
+            // 1. Kích hoạt xe chuyển sang đúng Map này
+            await sendCmd(`CMD:MAP:${activeMap}`);
+            await new Promise(r => setTimeout(r, 60));
+
+            // 2. Xóa các mốc cũ của Map này trong xe
+            await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
+            await new Promise(r => setTimeout(r, 60));
+
+            // 3. Nạp từng mốc với khoảng nghỉ an toàn chống nghẽn gói BLE
             for (let i = 0; i < list.length; i++) {
                 const w = list[i];
-                await new Promise(r => setTimeout(r, 40));
                 await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
+                await new Promise(r => setTimeout(r, 45));
             }
+
+            // 4. Lưu vĩnh viễn vào Flash NVS
+            await new Promise(r => setTimeout(r, 50));
             await sendCmd('CMD:SAVE');
             log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);
         }
+
+        // ================= LOG LƯỢT CHẠY QUA BLE =================
+        // Xe ghi 200 dòng/giây vào RAM khi chạy, dừng xe là tự gửi lên qua BLE:
+        //   RB:<tổng>,<mất>,<chu kỳ ms>  -> bắt đầu | R:<nhiều dòng CSV> -> dữ liệu | RE:<tổng> -> kết thúc | RX -> chưa có log
+        const RUNLOG_KEY = 'racecar_last_runlog_v1';
+        const CASE_NAMES = ['PID', 'MAT_LINE', 'VACH_NGANG', 'NET_DUT', 'CUA_TRAI', 'CUA_PHAI', 'DUNG'];
+        const ACT_NAMES = ['-', 'EP_TRAI', 'EP_PHAI', 'KHOA_THANG', 'PHANH'];
+        let runLogRows = [];      // mỗi phần tử là 1 dòng CSV thô từ xe
+        let runLogMeta = null;    // { total, dropped, periodMs }
+        let runLogReceiving = false;
+
+        function setRunLogStatus(msg, color) {
+            const el = document.getElementById('runLogStatus');
+            el.innerText = msg;
+            el.style.color = color || 'var(--text-dim)';
+        }
+
+        // Trả về true nếu gói này là gói log
+        function handleRunLogPacket(raw) {
+            if (raw.startsWith('RB:')) {
+                const p = raw.substring(3).split(',');
+                runLogMeta = { total: parseInt(p[0]) || 0, dropped: parseInt(p[1]) || 0, periodMs: parseInt(p[2]) || 5 };
+                runLogRows = [];
+                runLogReceiving = true;
+                setRunLogStatus(`Đang nhận log: 0/${runLogMeta.total} dòng...`, 'var(--accent-yellow)');
+                return true;
+            }
+            if (raw.startsWith('R:')) {
+                if (runLogReceiving) {
+                    for (const line of raw.substring(2).split('\n')) {
+                        if (/^\d/.test(line) && line.split(',').length >= 13) runLogRows.push(line);
+                    }
+                    setRunLogStatus(`Đang nhận log: ${runLogRows.length}/${runLogMeta.total} dòng...`, 'var(--accent-yellow)');
+                }
+                return true;
+            }
+            if (raw.startsWith('RE:')) {
+                runLogReceiving = false;
+                const missing = runLogMeta ? runLogMeta.total - runLogRows.length : 0;
+                let msg = `Đã nhận ${runLogRows.length} dòng.`;
+                if (missing > 0) msg += ` Thiếu ${missing} dòng, bấm TẢI LẠI LOG.`;
+                if (runLogMeta && runLogMeta.dropped > 0) msg += ` Lượt chạy dài hơn bộ nhớ xe: mất ${runLogMeta.dropped} dòng đầu.`;
+                setRunLogStatus(msg, missing > 0 ? 'var(--accent-red)' : 'var(--accent-green)');
+                renderRunLog();
+                try { localStorage.setItem(RUNLOG_KEY, JSON.stringify({ meta: runLogMeta, rows: runLogRows })); } catch (e) {}
+                return true;
+            }
+            if (raw === 'RX') {
+                setRunLogStatus('Xe chưa có log nào (chưa chạy lượt nào từ lúc bật nguồn).');
+                return true;
+            }
+            return false;
+        }
+
+        async function requestLogDump() {
+            if (!rxChar) {
+                setRunLogStatus('Chưa kết nối BLE.', 'var(--accent-red)');
+                return;
+            }
+            await sendCmd('CMD:LOG_DUMP');
+        }
+
+        // Dòng thô: t_ms,pos,corr,pwmL,pwmR,vL,vR,mask,ticks,case,act,wp,base
+        function maskToEyes(mask) {
+            let s = '';
+            for (let i = 0; i < 16; i++) s += (mask & (1 << i)) ? '#' : '.';
+            return s;
+        }
+
+        function renderRunLog() {
+            document.getElementById('runLogBadge').innerText = runLogRows.length + ' DÒNG';
+            const pad = (v, n) => String(v).padStart(n);
+            const out = ['  t_ms    pos  corr  pwmL  pwmR    vL    vR  mat(0..15)        xung  base  moc  trang thai'];
+            for (const line of runLogRows) {
+                const p = line.split(',');
+                if (p.length < 13) continue;
+                const act = ACT_NAMES[parseInt(p[10])] || p[10];
+                out.push(pad(p[0], 6) + pad(p[1], 7) + pad(p[2], 6) + pad(p[3], 6) + pad(p[4], 6) + pad(p[5], 6) + pad(p[6], 6) +
+                    '  ' + maskToEyes(parseInt(p[7]) || 0) + pad(p[8], 6) + pad(p[12], 6) + pad(p[11], 5) +
+                    '  ' + (CASE_NAMES[parseInt(p[9])] || p[9]) + (act !== '-' ? ' / ' + act : ''));
+            }
+            document.getElementById('runLogBox').textContent = out.join('\n');
+        }
+
+        // Copy toàn bộ log (CSV có tiêu đề) vào clipboard để dán cho Claude / Excel
+        async function copyRunLog() {
+            if (!runLogRows.length) {
+                setRunLogStatus('Chưa có log để copy.', 'var(--accent-red)');
+                return;
+            }
+            const text = buildRunLogCsv();
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (e) {
+                // Dự phòng khi trình duyệt chặn clipboard API
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                if (!ok) {
+                    setRunLogStatus('Không copy được, hãy dùng nút CSV.', 'var(--accent-red)');
+                    return;
+                }
+            }
+            setRunLogStatus(`Đã copy ${runLogRows.length} dòng log vào clipboard.`, 'var(--accent-green)');
+        }
+
+        function buildRunLogCsv() {
+            const out = ['t_ms,pos,corr,pwmL,pwmR,vL_mms,vR_mms,mask,ticks,case,act,wp,base,case_name,act_name,eyes_0_15'];
+            for (const line of runLogRows) {
+                const p = line.split(',');
+                if (p.length < 13) continue;
+                out.push(line + ',' + (CASE_NAMES[parseInt(p[9])] || '') + ',' + (ACT_NAMES[parseInt(p[10])] || '') + ',' + maskToEyes(parseInt(p[7]) || 0));
+            }
+            return out.join('\n');
+        }
+
+        function downloadRunLog() {
+            if (!runLogRows.length) {
+                setRunLogStatus('Chưa có log để tải.', 'var(--accent-red)');
+                return;
+            }
+            const d = new Date();
+            const z = n => String(n).padStart(2, '0');
+            const name = `runlog_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.csv`;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([buildRunLogCsv()], { type: 'text/csv' }));
+            a.download = name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+
+        // Khôi phục log lượt chạy gần nhất đã nhận (tắt mở lại trang không mất)
+        try {
+            const saved = JSON.parse(localStorage.getItem(RUNLOG_KEY) || 'null');
+            if (saved && Array.isArray(saved.rows)) {
+                runLogRows = saved.rows;
+                runLogMeta = saved.meta || null;
+                renderRunLog();
+            }
+        } catch (e) {}
 
         renderWpTable();
         updateBestLapDisplay();

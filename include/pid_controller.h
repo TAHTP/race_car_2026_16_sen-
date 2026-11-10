@@ -62,6 +62,8 @@ void pid_set_auto_mode(bool enable);
  * @brief Cập nhật hành động ép kịch bản sa bàn (Normal, Force Left, Force Right, Lock Straight, Stop)
  */
 void pid_set_sector_action(uint8_t action);
+// Vùng tiếp cận trước đoạn ép: -1 = hướng đầu xe sang Trái, +1 = sang Phải, 0 = tắt
+void pid_set_approach_dir(int8_t dir);
 uint8_t pid_get_sector_action(void);
 
 /**
