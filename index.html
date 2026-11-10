@@ -518,6 +518,7 @@
         </div>
         <div class="form-row">
             <button class="btn-sub primary" style="flex: 1;" onclick="requestLogDump()">🔁 TẢI LẠI LOG TỪ XE</button>
+            <button class="btn-sub" onclick="copyRunLog()">📋 COPY</button>
             <button class="btn-sub success" onclick="downloadRunLog()">💾 CSV</button>
         </div>
         <div id="runLogStatus" style="font-size: 0.7rem; color: var(--text-dim); margin: 6px 0;">Xe chạy xong và dừng là log tự gửi về qua BLE.</div>
@@ -1110,22 +1111,53 @@
             document.getElementById('runLogBox').textContent = out.join('\n');
         }
 
-        function downloadRunLog() {
+        // Copy toàn bộ log (CSV có tiêu đề) vào clipboard để dán cho Claude / Excel
+        async function copyRunLog() {
             if (!runLogRows.length) {
-                setRunLogStatus('Chưa có log để tải.', 'var(--accent-red)');
+                setRunLogStatus('Chưa có log để copy.', 'var(--accent-red)');
                 return;
             }
+            const text = buildRunLogCsv();
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (e) {
+                // Dự phòng khi trình duyệt chặn clipboard API
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                if (!ok) {
+                    setRunLogStatus('Không copy được, hãy dùng nút CSV.', 'var(--accent-red)');
+                    return;
+                }
+            }
+            setRunLogStatus(`Đã copy ${runLogRows.length} dòng log vào clipboard.`, 'var(--accent-green)');
+        }
+
+        function buildRunLogCsv() {
             const out = ['t_ms,pos,corr,pwmL,pwmR,vL_mms,vR_mms,mask,ticks,case,act,wp,base,case_name,act_name,eyes_0_15'];
             for (const line of runLogRows) {
                 const p = line.split(',');
                 if (p.length < 13) continue;
                 out.push(line + ',' + (CASE_NAMES[parseInt(p[9])] || '') + ',' + (ACT_NAMES[parseInt(p[10])] || '') + ',' + maskToEyes(parseInt(p[7]) || 0));
             }
+            return out.join('\n');
+        }
+
+        function downloadRunLog() {
+            if (!runLogRows.length) {
+                setRunLogStatus('Chưa có log để tải.', 'var(--accent-red)');
+                return;
+            }
             const d = new Date();
             const z = n => String(n).padStart(2, '0');
             const name = `runlog_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.csv`;
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(new Blob([out.join('\n')], { type: 'text/csv' }));
+            a.href = URL.createObjectURL(new Blob([buildRunLogCsv()], { type: 'text/csv' }));
             a.download = name;
             a.click();
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
