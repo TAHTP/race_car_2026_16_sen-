@@ -371,88 +371,102 @@ void pid_line_follow_step(void) {
 
         // =====================================================================
         // CASE 1: BÁM LINE PID CHÍNH (Đường thẳng, cua mềm, cua gắt, cua chữ S)
-        // Chuẩn Lý thuyết Điều khiển Tự Động (Standard Discrete PID on PV)
+        // Áp dụng thuật toán PID cải tiến từ bản tham chiếu thi đấu:
+        // - Error & Steer chuẩn hóa
+        // - I_ZONE + Smooth Decay + Clamping
+        // - D với chu kỳ chuẩn hóa dtn & bộ lọc EMA 40% (siêu mượt, không trễ)
+        // - Bộ điều tốc Dynamic Speed Governor (Corner Drag + Slew Rate 500 PWM/s)
+        // - Outer Wheel Boost khi cua gắt
         // =====================================================================
         case LINE_CASE_NORMAL_PID: {
-            // 1. Sai số chuẩn điều khiển (Error = Setpoint - Process Variable):
-            // Setpoint r = - s_approach_dir * APPROACH_BIAS (dịch đích ngắm khi có lệnh ép rẽ), PV y = position
-            // Lệch trái (pos < 0) => error > 0 | Lệch phải (pos > 0) => error < 0
-            float error = - (position + (float)s_approach_dir * APPROACH_BIAS);
+            // 1. Sai số bám tâm:
+            // position > 0: Vạch lệch sang phải | position < 0: Vạch lệch sang trái
+            // s_approach_dir * APPROACH_BIAS: Dịch đích ngắm khi tiếp cận mốc sa bàn
+            float error = position + (float)s_approach_dir * APPROACH_BIAS;
             float absErr = fabsf(error);
 
-            // Khâu P tuyến tính chuẩn mực (Linear Proportional Term):
+            // 2. Chuẩn hóa chu kỳ điều khiển dtn theo chu kỳ danh định (2000us = 2ms):
+            float dtn = (dt > 0.0f) ? (dt / 0.002f) : 1.0f;
+            dtn = constrain(dtn, 0.1f, 4.0f);
+
+            // 3. Khâu P (Proportional) thuần túy (không cộng boost cứng làm lệch khi Kp=0):
             float pTerm = pidConfig.Kp * error;
 
-            // BỔ SUNG LỰC HÚT TÂM CHỦ ĐỘNG (Active Centering Boost):
-            // Khi xe chớm lệch (0.5 đến 6.0), tăng độ nhạy vi sai để thắng ma sát tĩnh cơ khí lốp
-            if (absErr > 0.5f && absErr <= 6.0f) {
-                float core_ratio = (absErr <= 3.0f) ? (absErr - 0.5f) / 2.5f : (6.0f - absErr) / 3.0f;
-                float boost = ((error > 0.0f) ? 1.0f : -1.0f) * (14.0f * core_ratio);
-                pTerm += boost;
-            }
-
-            // 2. Khâu I chuẩn với Anti-windup (Clamping & Conditional Integration):
-            // Chỉ tích phân sai số khi xe ở vùng bám tim (|error| <= 15.0) và Ki > 0
-            if (absErr <= 15.0f && pidConfig.Ki > 0.0f) {
-                integralError += error * dt;
-                if (integralError > 100.0f) integralError = 100.0f;
-                if (integralError < -100.0f) integralError = -100.0f;
+            // 4. Khâu I (Integral với I_ZONE, suy hao êm 0.80 và kẹp biên chống windup):
+            const float I_ZONE = 30.0f; // Vùng tích phân sai số (tương đương 40% bề rộng dàn mắt)
+            if (absErr < I_ZONE) {
+                integralError += error * dtn;
             } else {
-                integralError *= 0.95f; // Suy hao êm để tránh tích lũy dư thừa khi thoát cua
+                integralError *= 0.80f; // Thoát khỏi zone: suy hao êm, triệt tiêu giật cục
+            }
+            if (pidConfig.Ki > 0.0f) {
+                const float I_MAX = 30.0f; // Giới hạn xung bù khâu I tối đa ±30 PWM
+                float max_i = I_MAX / pidConfig.Ki;
+                integralError = constrain(integralError, -max_i, max_i);
+            } else {
+                integralError = 0.0f;
             }
             float iTerm = pidConfig.Ki * integralError;
 
-            // 3. Khâu D chuẩn Điều khiển Tự Động (Derivative on Measurement + LPF):
-            // Vi phân trực tiếp trên biến đo PV y(t) = position để triệt tiêu Derivative Kick
-            // Bộ lọc thông thấp bậc 1 (EMA LPF, fc ≈ 40Hz) dập tắt hoàn toàn nhiễu rời rạc của cảm biến
-            float raw_rate = (position - s_last_position) / dt;
-            s_last_position = position;
-            s_filtered_deriv = 0.65f * s_filtered_deriv + 0.35f * raw_rate;
+            // 5. Khâu D (Derivative với dtn chuẩn hóa và bộ lọc EMA 40% mượt mà, phản ứng tức thì):
+            float rawD = pidConfig.Kd * (error - lastError) / dtn;
+            s_filtered_deriv = s_filtered_deriv + 0.40f * (rawD - s_filtered_deriv);
+            float dTerm = s_filtered_deriv;
 
-            // D[k] = - Kd * T_nominal * (dy/dt)_filtered (đảm bảo dải Kd trực quan 10-30 trên Web)
-            const float NOMINAL_DT = 0.002f;
-            float dTerm = - (pidConfig.Kd * NOMINAL_DT) * s_filtered_deriv;
-
-            // Tổng giá trị điều khiển bù lái (Control Output u = P + I + D)
-            lastCorrection = pTerm + iTerm + dTerm;
+            // 6. Tổng lực bù lái (Steering Output):
+            // error > 0 (vạch bên phải) => steer > 0 => Bánh trái tăng, bánh phải giảm => cua phải
+            // error < 0 (vạch bên trái) => steer < 0 => Bánh trái giảm, bánh phải tăng => cua trái
+            float steer = pTerm + iTerm + dTerm;
             lastError = error;
+            lastCorrection = steer;
 
-            // 4. Phân phối tốc độ ra 2 bánh (Hệ dẫn động vi sai chuẩn):
-            // error < 0 (vạch bên phải) => lastCorrection < 0 => Left tăng tốc, Right giảm tốc => bẻ phải
-            // error > 0 (vạch bên trái) => lastCorrection > 0 => Left giảm tốc, Right tăng tốc => bẻ trái
             int16_t leftSpeed = 0;
             int16_t rightSpeed = 0;
 
             if (pidConfig.baseSpeed > 0) {
-                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up)
-                if (s_ramped_base < 38.0f) {
-                    s_ramped_base = 38.0f;
+                // 7. BỘ ĐIỀU TỐC ĐỘNG THÔNG MINH (Dynamic Speed Governor):
+                // - Cua vào góc (f lớn): ghìm tốc tức thì để bám cua không văng xe (Corner Drag)
+                // - Hết cua ra thẳng (f nhỏ): tăng tốc mượt khống chế gia tốc (Slew-rate Ramp 500 PWM/s)
+                // Triệt tiêu hoàn toàn hiện tượng khựng xe khi đổi hướng!
+                int16_t activeBase = pidConfig.baseSpeed;
+                int16_t cornerMin = (activeBase > 60) ? 45 : 35; // Tốc độ sàn an toàn khi ôm cua
+
+                // f tính từ độ lệch vạch (trên 35.0) và độ gắt tay lái steer (trên 100.0)
+                float f = fmaxf(absErr / 35.0f, fabsf(steer) / 100.0f);
+                f = constrain(f, 0.0f, 1.0f);
+                float targetBase = (float)activeBase - (float)(activeBase - cornerMin) * f;
+
+                if (s_ramped_base <= 0.0f) {
+                    s_ramped_base = (float)cornerMin;
                 }
-                if (s_ramped_base < (float)pidConfig.baseSpeed) {
-                    s_ramped_base += 1.0f;
-                    if (s_ramped_base > (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
-                } else if (s_ramped_base > (float)pidConfig.baseSpeed) {
-                    s_ramped_base -= 2.0f;
-                    if (s_ramped_base < (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
+
+                if (targetBase < s_ramped_base) {
+                    // Cua: Giảm tốc tức thì theo độ cong sa bàn
+                    s_ramped_base = targetBase;
+                } else {
+                    // Thoát cua: Tăng tốc êm ái với gia tốc 500 PWM/s (~1.0 PWM mỗi 2ms)
+                    float step = 500.0f * (dt > 0.0f ? dt : 0.002f);
+                    s_ramped_base = fminf(targetBase, s_ramped_base + step);
                 }
 
-                // Giảm tốc ôm cua chủ động (Dynamic Corner Drag)
-                int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
-                if (currentBase < 40) currentBase = 40;
+                int16_t L = (int16_t)s_ramped_base + (int16_t)steer;
+                int16_t R = (int16_t)s_ramped_base - (int16_t)steer;
 
-                // (Đã bỏ auto_boost theo commit trên origin/main: không tự cộng thêm ga, tốc độ = đúng baseSpeed cài đặt)
-                leftSpeed  = currentBase - (int16_t)lastCorrection;
-                rightSpeed = currentBase + (int16_t)lastCorrection;
+                // 8. TRỢ LỰC BÁNH NGOÀI KHI CUA CỰC GẮT (Hard-turn Outer Wheel Boost):
+                const float BOOST_THRESHOLD = 140.0f;
+                const int16_t BOOST_VAL = 15;
+                if (steer > BOOST_THRESHOLD)  L += BOOST_VAL; // Cua phải gắt: đẩy thêm bánh ngoài (Trái)
+                if (steer < -BOOST_THRESHOLD) R += BOOST_VAL; // Cua trái gắt: đẩy thêm bánh ngoài (Phải)
 
-                // Giới hạn trong dải an toàn
-                leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
-                rightSpeed = clamp_int16(rightSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
+                // Giới hạn trong dải an toàn minSpeed..maxSpeed
+                leftSpeed  = clamp_int16(L, pidConfig.minSpeed, pidConfig.maxSpeed);
+                rightSpeed = clamp_int16(R, pidConfig.minSpeed, pidConfig.maxSpeed);
             } else {
                 // CHẾ ĐỘ TEST CĂN TÂM TĨNH TRÊN BÀN (baseSpeed = 0):
-                // Lệch trái (error > 0 => lastCorrection > 0) => Left lùi, Right tiến => xoay trái
-                // Lệch phải (error < 0 => lastCorrection < 0) => Left tiến, Right lùi => xoay phải
-                leftSpeed  = clamp_int16(-(int16_t)lastCorrection, -120, 120);
-                rightSpeed = clamp_int16((int16_t)lastCorrection, -120, 120);
+                // Khi Kp=Ki=Kd=0 => steer = 0 => 2 bánh đứng im tuyệt đối (0 rung lắc, 0 giật)!
+                // Khi Kp > 0: vạch bên phải (steer > 0) => L tiến, R lùi => xe tự xoay sang phải ngắm vạch
+                leftSpeed  = clamp_int16((int16_t)steer, -120, 120);
+                rightSpeed = clamp_int16(-(int16_t)steer, -120, 120);
             }
 
             motor_set_speeds(leftSpeed, rightSpeed);
