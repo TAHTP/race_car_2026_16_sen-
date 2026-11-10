@@ -2,6 +2,7 @@
 #define BLE_HANDLER_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -36,6 +37,8 @@ void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos,
 
 // Bắn chuỗi thông báo chung hoặc danh sách Map về Web
 void ble_send_string(const char *str);
+// Gửi nguyên khối byte qua notify (không in Serial, không delay) - dùng cho log lượt chạy
+void ble_send_raw(const uint8_t *data, size_t len);
 void ble_send_map_data(uint8_t map_idx);
 
 #ifdef __cplusplus

@@ -1,12 +1,8 @@
 #include "run_log.h"
 
 #include <Arduino.h>
-#include <BluetoothSerial.h>
 #include <esp_heap_caps.h>
-
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED) || !defined(CONFIG_BT_SPP_ENABLED)
-#error "Bluetooth Classic SPP chi chay tren ESP32 goc (khong phai S3/C3/C6)."
-#endif
+#include "ble_handler.h"
 
 #pragma pack(push, 1)
 typedef struct {
@@ -23,11 +19,9 @@ typedef struct {
 } LogRec_t;
 #pragma pack(pop)
 
-#define HEAP_RESERVE_BYTES  40000  // RAM chừa lại cho BLE + SPP khi có máy kết nối
-#define DUMP_LINES_PER_CALL 40
-
-static BluetoothSerial SerialBT;
-static bool s_bt_ok = false;
+#define HEAP_RESERVE_BYTES  40000  // RAM chừa lại cho BLE và các tác vụ khác
+#define CHUNK_MAX_BYTES     190    // Mỗi gói BLE notify (dưới MTU 247 - 3)
+#define CHUNK_PACE_MS       20     // Nghỉ giữa các gói để BLE không bị tràn hàng đợi
 
 static LogRec_t *s_buf = NULL;
 static uint32_t s_cap = 0;
@@ -48,8 +42,8 @@ static uint32_t s_dump_total = 0;
 static uint32_t s_dump_first = 0;
 static uint32_t s_dump_t = 0;
 static uint16_t s_dump_prev_t = 0;
-static char s_cmd[16];
-static uint8_t s_cmd_len = 0;
+static uint32_t s_last_tx = 0;
+static bool s_end_pending = false;
 
 static inline int16_t sat16(float v) {
     if (v > 32767.0f) return 32767;
@@ -57,13 +51,8 @@ static inline int16_t sat16(float v) {
     return (int16_t)v;
 }
 
-void runlog_init(const char *bt_name) {
-    s_bt_ok = SerialBT.begin(bt_name);
-    if (!s_bt_ok) {
-        Serial.println(">> ❌ [LOG] Không bật được Bluetooth Classic SPP!");
-    }
-
-    // Cấp phát bộ đệm theo RAM còn trống sau khi BLE + SPP đã khởi động
+void runlog_init(void) {
+    // Cấp phát bộ đệm theo RAM còn trống sau khi BLE đã khởi động
     size_t free_heap = ESP.getFreeHeap();
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     size_t usable = (free_heap > HEAP_RESERVE_BYTES) ? (free_heap - HEAP_RESERVE_BYTES) : 0;
@@ -76,12 +65,14 @@ void runlog_init(const char *bt_name) {
         if (s_buf) s_cap = cap;
     }
 
-    Serial.printf(">> 📝 [LOG] SPP: %s | RAM trống %u B | Sức chứa %u dòng (%.1f giây ở 200 dòng/giây)\n",
-                  s_bt_ok ? "OK" : "LỖI", (unsigned)free_heap, (unsigned)s_cap,
+    Serial.printf(">> 📝 [LOG] RAM trống %u B | Sức chứa %u dòng (%.1f giây ở 200 dòng/giây)\n",
+                  (unsigned)free_heap, (unsigned)s_cap,
                   (float)s_cap * (RUNLOG_PERIOD_US / 1000000.0f));
 }
 
 void runlog_start(void) {
+    s_dumping = false;
+    s_end_pending = false;
     s_gen++;
     s_head = 0;
     s_count = 0;
@@ -121,22 +112,15 @@ void runlog_record(float pos, float corr, int16_t pwm_l, int16_t pwm_r,
     else s_dropped++;
 }
 
-static void poll_commands(void) {
-    while (SerialBT.available()) {
-        char c = (char)SerialBT.read();
-        if (c == '\n' || c == '\r') {
-            s_cmd[s_cmd_len] = '\0';
-            if (strcmp(s_cmd, "DUMP") == 0) s_pending = true; // máy tính xin gửi lại log gần nhất
-            s_cmd_len = 0;
-        } else if (s_cmd_len < sizeof(s_cmd) - 1) {
-            s_cmd[s_cmd_len++] = c;
-        }
-    }
+void runlog_request_dump(void) {
+    s_pending = true; // Web xin gửi lại log của lượt chạy gần nhất
+}
+
+static void send_raw(const char *buf, size_t len) {
+    ble_send_raw((const uint8_t *)buf, len);
 }
 
 bool runlog_service(bool car_running) {
-    if (!s_bt_ok) return false;
-
     if (car_running) {
         s_was_running = true;
         s_dumping = false; // xe chạy lượt mới thì hủy lượt gửi dở
@@ -147,17 +131,30 @@ bool runlog_service(bool car_running) {
         s_pending = true;
     }
 
-    if (!SerialBT.hasClient()) {
+    if (!ble_is_connected()) {
         s_dumping = false; // mất kết nối giữa chừng: giữ s_pending để gửi lại khi kết nối
         return false;
     }
-    poll_commands();
+
+    // Nghỉ giữa các gói để BLE không tràn hàng đợi
+    if ((s_dumping || s_pending || s_end_pending) && millis() - s_last_tx < CHUNK_PACE_MS) return true;
+
+    if (s_end_pending) { // gói kết thúc, báo tổng số dòng để web kiểm tra thiếu
+        s_end_pending = false;
+        char tail[24];
+        int n = snprintf(tail, sizeof(tail), "RE:%u", (unsigned)s_dump_total);
+        send_raw(tail, n);
+        s_last_tx = millis();
+        Serial.printf(">> 📝 [LOG] Đã gửi %u dòng qua BLE\n", (unsigned)s_dump_total);
+        return false;
+    }
 
     if (!s_dumping) {
         if (!s_pending) return false;
         s_pending = false;
+        s_last_tx = millis();
         if (s_count == 0) {
-            SerialBT.print("LOG_EMPTY\n");
+            send_raw("RX", 2); // chưa có log nào
             return false;
         }
         s_dump_gen = s_gen;
@@ -168,12 +165,10 @@ bool runlog_service(bool car_running) {
         s_dump_prev_t = s_buf[s_dump_first].t_ms;
         s_dumping = true;
 
-        char hdr[160];
-        int n = snprintf(hdr, sizeof(hdr),
-                         "LOG_BEGIN,%u,%u,%u\n"
-                         "t_ms,pos,corr,pwmL,pwmR,vL,vR,mask,ticks,case,act,wp,base\n",
+        char hdr[48];
+        int n = snprintf(hdr, sizeof(hdr), "RB:%u,%u,%u",
                          (unsigned)s_dump_total, (unsigned)s_dropped, (unsigned)(RUNLOG_PERIOD_US / 1000));
-        SerialBT.write((const uint8_t *)hdr, n);
+        send_raw(hdr, n);
         return true;
     }
 
@@ -182,17 +177,15 @@ bool runlog_service(bool car_running) {
         return false;
     }
 
-    char out[320];
+    // Mỗi gói BLE: "R:" + nhiều dòng CSV nguyên vẹn, ngăn bằng '\n'
+    char out[CHUNK_MAX_BYTES + 8];
     int len = 0;
-    for (int k = 0; k < DUMP_LINES_PER_CALL && s_dump_idx < s_dump_total; k++, s_dump_idx++) {
+    out[len++] = 'R';
+    out[len++] = ':';
+    while (s_dump_idx < s_dump_total && len + 72 <= CHUNK_MAX_BYTES) {
         const LogRec_t *r = &s_buf[(s_dump_first + s_dump_idx) % s_cap];
         s_dump_t += (uint16_t)(r->t_ms - s_dump_prev_t); // nối lại thời gian khi t_ms tràn 16 bit
         s_dump_prev_t = r->t_ms;
-
-        if (len > (int)sizeof(out) - 80) {
-            SerialBT.write((const uint8_t *)out, len);
-            len = 0;
-        }
         int ap = abs((int)r->pos10);
         len += snprintf(out + len, sizeof(out) - len, "%u,%s%d.%d,%d,%d,%d,%d,%d,%u,%u,%u,%u,%u,%u\n",
                         (unsigned)s_dump_t,
@@ -200,16 +193,14 @@ bool runlog_service(bool car_running) {
                         r->corr, r->pwm_l, r->pwm_r, r->v_l, r->v_r,
                         (unsigned)r->mask, (unsigned)r->ticks, (unsigned)r->line_case,
                         (unsigned)(r->act_wp >> 4), (unsigned)(r->act_wp & 0x0F), (unsigned)r->base);
+        s_dump_idx++;
     }
-    if (len > 0) SerialBT.write((const uint8_t *)out, len);
+    send_raw(out, len);
+    s_last_tx = millis();
 
     if (s_dump_idx >= s_dump_total) {
-        char tail[32];
-        int n = snprintf(tail, sizeof(tail), "LOG_END,%u\n", (unsigned)s_dump_total);
-        SerialBT.write((const uint8_t *)tail, n);
         s_dumping = false;
-        Serial.printf(">> 📝 [LOG] Đã gửi %u dòng qua SPP\n", (unsigned)s_dump_total);
-        return false;
+        s_end_pending = true;
     }
     return true;
 }

@@ -5,17 +5,20 @@
 #include <stdbool.h>
 
 // ================================================================
-// GHI LOG LƯỢT CHẠY 200 DÒNG/GIÂY + TRUYỀN QUA BLUETOOTH CLASSIC (SPP)
+// GHI LOG LƯỢT CHẠY 200 DÒNG/GIÂY + GỬI QUA BLE KHI XE DỪNG
 // - Trong lúc chạy: Core 1 chỉ ghi vào RAM (không gửi gì, không ảnh hưởng vòng PID).
-// - Xe dừng: Core 0 tự gửi toàn bộ log dạng CSV qua SPP cho máy đang kết nối.
+// - Xe dừng: Core 0 tự gửi toàn bộ log dạng CSV qua BLE cho máy đang kết nối.
 // - Bộ đệm vòng: nếu lượt chạy dài hơn sức chứa thì giữ phần CUỐI lượt chạy.
 // ================================================================
 
 #define RUNLOG_PERIOD_US   5000   // 5 ms = 200 dòng/giây
 #define RUNLOG_MAX_RECORDS 6000   // Trần sức chứa (30 giây); thực tế tự co theo RAM còn trống
 
-// Gọi 1 lần trong setup(), SAU ble_init(). Bật SPP và cấp phát bộ đệm.
-void runlog_init(const char *bt_name);
+// Gọi 1 lần trong setup(), SAU ble_init(). Cấp phát bộ đệm theo RAM còn trống.
+void runlog_init(void);
+
+// Web xin gửi lại log của lượt chạy gần nhất (lệnh CMD:LOG_DUMP)
+void runlog_request_dump(void);
 
 // Core 1: gọi khi bắt đầu một lượt chạy (xóa log cũ)
 void runlog_start(void);

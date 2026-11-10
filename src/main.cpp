@@ -242,7 +242,7 @@ void controlTask(void *pvParameters) {
             // Thực thi 1 bước PID
             pid_line_follow_step();
 
-            // Ghi log lượt chạy vào RAM (200 dòng/giây), gửi qua SPP sau khi xe dừng
+            // Ghi log lượt chạy vào RAM (200 dòng/giây), gửi qua BLE sau khi xe dừng
             runlog_record(cur_pos, pid_get_correction(),
                           motor_get_left_speed(), motor_get_right_speed(),
                           encoder_get_speed_L_mms(), encoder_get_speed_R_mms(),
@@ -269,7 +269,7 @@ void bleTask(void *pvParameters) {
     static uint32_t s_last_wait_log = 0;
     static uint32_t s_last_telemetry = 0;
     for (;;) {
-        // Gửi log lượt chạy qua Bluetooth Classic SPP sau khi xe dừng
+        // Gửi log lượt chạy qua BLE sau khi xe dừng
         CarRunMode_t run_mode = car_get_run_mode();
         bool log_busy = runlog_service(run_mode == CAR_MODE_SCAN || run_mode == CAR_MODE_RACE);
         if (log_busy && millis() - s_last_telemetry < 150) {
@@ -324,8 +324,8 @@ void setup() {
     // 4. Khởi tạo BLE Server với tên nhận diện
     ble_init("RACECAR_16SEN");
 
-    // 4b. Bật Bluetooth Classic SPP để gửi log lượt chạy (phải gọi sau ble_init)
-    runlog_init("RACECAR_16SEN");
+    // 4b. Cấp bộ đệm log lượt chạy (gọi sau ble_init), log gửi lên Web qua BLE khi xe dừng
+    runlog_init();
 
     Serial.println("\n=======================================================");
     Serial.println("  🏎️  XE DÒ LINE 16 MẮT 2026 - DUAL-CORE FREERTOS + BLE");
@@ -351,7 +351,7 @@ void setup() {
     xTaskCreatePinnedToCore(
         bleTask,
         "BleTask",
-        6144, // tăng stack vì task này gửi thêm log SPP
+        6144, // tăng stack vì task này gửi thêm log
         NULL,
         2,
         &s_ble_task_handle,

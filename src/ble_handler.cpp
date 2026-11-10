@@ -4,6 +4,7 @@
 #include "motor.h"
 #include "pid_controller.h"
 #include "encoder.h"
+#include "run_log.h"
 
 #include <Arduino.h>
 #include <BLEDevice.h>
@@ -171,6 +172,9 @@ class RxCallbacks : public BLECharacteristicCallbacks {
             uint8_t m = rxValue.substring(12).toInt();
             ble_send_map_data(m);
         }
+        else if (rxValue == "CMD:LOG_DUMP") {
+            runlog_request_dump();
+        }
         else if (rxValue == "CMD:POLARITY:TOGGLE") {
             bool cur = sensor_get_polarity();
             sensor_set_polarity(!cur);
@@ -227,6 +231,13 @@ void ble_send_string(const char *str) {
         delay(5);
     }
     Serial.printf(">> 📤 [BLE PHẢN HỒI]: %s\n", str);
+}
+
+void ble_send_raw(const uint8_t *data, size_t len) {
+    if (deviceConnected && pTxCharacteristic) {
+        pTxCharacteristic->setValue((uint8_t*)data, len);
+        pTxCharacteristic->notify();
+    }
 }
 
 void ble_send_telemetry(int32_t ticks_l, int32_t ticks_r, float line_pos, 
