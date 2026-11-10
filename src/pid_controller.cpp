@@ -29,6 +29,9 @@ static float lastError = 0.0f;
 static float integralError = 0.0f;
 static float lastCorrection = 0.0f;
 static unsigned long lastComputeTime = 0;
+static unsigned long s_last_compute_micros = 0;
+static float s_last_position = 0.0f;
+static float s_filtered_deriv = 0.0f;
 static float s_ramped_base = 0.0f; // Tốc độ nền tăng tốc mềm (Soft-start Ramp)
 
 #define DASHED_LINE_TIMEOUT_MS  60    // Thời gian cho phép lướt qua nét đứt (ms)
@@ -62,6 +65,9 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
     lastError = 0.0f;
     integralError = 0.0f;
     lastComputeTime = millis();
+    s_last_compute_micros = 0;
+    s_last_position = 0.0f;
+    s_filtered_deriv = 0.0f;
     autoMode = false;
     currentCase = LINE_CASE_STOPPED;
     isLineCurrentlyLost = false;
@@ -118,6 +124,9 @@ void pid_set_auto_mode(bool enable) {
     } else {
         integralError = 0.0f;
         lastError = 0.0f;
+        s_last_position = 0.0f;
+        s_filtered_deriv = 0.0f;
+        s_last_compute_micros = 0;
         lastComputeTime = millis();
     }
 }
@@ -306,6 +315,7 @@ void pid_line_follow_step(void) {
             s_corner_latch = 0;
             integralError = 0.0f;
             lastError = 0.0f;
+            s_filtered_deriv = 0.0f;
             if (center_locked) {
                 // Kích hoạt 20ms phanh ghì cứng 2 bánh dập tắt triệt để trớn xoay của thân xe
                 s_corner_brake_until = millis() + 20;
@@ -346,60 +356,80 @@ void pid_line_follow_step(void) {
         return;
     }
 
-    unsigned long now = millis();
-    float dt = (float)(now - lastComputeTime) / 1000.0f;
-    if (dt <= 0.0f || dt > 0.1f) dt = 0.01f;
-    lastComputeTime = now;
+    unsigned long now_us = micros();
+    float dt = 0.002f;
+    if (s_last_compute_micros > 0) {
+        dt = (float)(now_us - s_last_compute_micros) / 1000000.0f;
+        if (dt <= 0.0005f || dt > 0.05f) {
+            dt = 0.002f;
+        }
+    }
+    s_last_compute_micros = now_us;
+    lastComputeTime = millis();
 
     switch (currentCase) {
 
         // =====================================================================
         // CASE 1: BÁM LINE PID CHÍNH (Đường thẳng, cua mềm, cua gắt, cua chữ S)
+        // Chuẩn Lý thuyết Điều khiển Tự Động (Standard Discrete PID on PV)
         // =====================================================================
         case LINE_CASE_NORMAL_PID: {
-            // Vùng tiếp cận đoạn ép: dịch đích ngắm sang phía ép để đầu xe hướng về đó (Trái = error âm)
-            float error = position + (float)s_approach_dir * APPROACH_BIAS; // -75.0 đến +75.0
+            // 1. Sai số chuẩn điều khiển (Error = Setpoint - Process Variable):
+            // Setpoint r = - s_approach_dir * APPROACH_BIAS (dịch đích ngắm khi có lệnh ép rẽ), PV y = position
+            // Lệch trái (pos < 0) => error > 0 | Lệch phải (pos > 0) => error < 0
+            float error = - (position + (float)s_approach_dir * APPROACH_BIAS);
             float absErr = fabsf(error);
 
-            // 1. Khâu P phi tuyến (Non-linear P):
-            // Lệch ít (|error| <= 8): lái êm, xe không vẫy đầu
-            // Lệch nhiều (|error| > 8): tự động tăng phản xạ bẻ lái kéo đầu xe về gấp
-            float pGain = pidConfig.Kp * (1.0f + 0.012f * absErr);
-            float pTerm = pGain * error;
+            // Khâu P tuyến tính chuẩn mực (Linear Proportional Term):
+            float pTerm = pidConfig.Kp * error;
 
             // BỔ SUNG LỰC HÚT TÂM CHỦ ĐỘNG (Active Centering Boost):
-            // Khi xe chớm lệch (0.5 đến 6.0), tăng thêm độ nhạy vi sai để thắng ma sát tĩnh cơ khí
+            // Khi xe chớm lệch (0.5 đến 6.0), tăng độ nhạy vi sai để thắng ma sát tĩnh cơ khí lốp
             if (absErr > 0.5f && absErr <= 6.0f) {
                 float core_ratio = (absErr <= 3.0f) ? (absErr - 0.5f) / 2.5f : (6.0f - absErr) / 3.0f;
                 float boost = ((error > 0.0f) ? 1.0f : -1.0f) * (14.0f * core_ratio);
                 pTerm += boost;
             }
 
-            // 2. Khâu I có Anti-windup (kẹp trong khoảng [-150, 150])
-            integralError += error * dt;
-            if (integralError > 150.0f) integralError = 150.0f;
-            if (integralError < -150.0f) integralError = -150.0f;
+            // 2. Khâu I chuẩn với Anti-windup (Clamping & Conditional Integration):
+            // Chỉ tích phân sai số khi xe ở vùng bám tim (|error| <= 15.0) và Ki > 0
+            if (absErr <= 15.0f && pidConfig.Ki > 0.0f) {
+                integralError += error * dt;
+                if (integralError > 100.0f) integralError = 100.0f;
+                if (integralError < -100.0f) integralError = -100.0f;
+            } else {
+                integralError *= 0.95f; // Suy hao êm để tránh tích lũy dư thừa khi thoát cua
+            }
             float iTerm = pidConfig.Ki * integralError;
 
-            // 3. Khâu D giảm chấn mạnh (Kd = 10.0 triệt tiêu hoàn toàn lắc lư đuôi xe)
-            float deltaErr = error - lastError;
-            lastError = error;
-            float dTerm = pidConfig.Kd * deltaErr;
+            // 3. Khâu D chuẩn Điều khiển Tự Động (Derivative on Measurement + LPF):
+            // Vi phân trực tiếp trên biến đo PV y(t) = position để triệt tiêu Derivative Kick
+            // Bộ lọc thông thấp bậc 1 (EMA LPF, fc ≈ 40Hz) dập tắt hoàn toàn nhiễu rời rạc của cảm biến
+            float raw_rate = (position - s_last_position) / dt;
+            s_last_position = position;
+            s_filtered_deriv = 0.65f * s_filtered_deriv + 0.35f * raw_rate;
 
-            // Tổng giá trị bù lái (Correction)
+            // D[k] = - Kd * T_nominal * (dy/dt)_filtered (đảm bảo dải Kd trực quan 10-30 trên Web)
+            const float NOMINAL_DT = 0.002f;
+            float dTerm = - (pidConfig.Kd * NOMINAL_DT) * s_filtered_deriv;
+
+            // Tổng giá trị điều khiển bù lái (Control Output u = P + I + D)
             lastCorrection = pTerm + iTerm + dTerm;
+            lastError = error;
 
-            // 4. Phân phối tốc độ ra 2 bánh:
+            // 4. Phân phối tốc độ ra 2 bánh (Hệ dẫn động vi sai chuẩn):
+            // error < 0 (vạch bên phải) => lastCorrection < 0 => Left tăng tốc, Right giảm tốc => bẻ phải
+            // error > 0 (vạch bên trái) => lastCorrection > 0 => Left giảm tốc, Right tăng tốc => bẻ trái
             int16_t leftSpeed = 0;
             int16_t rightSpeed = 0;
 
             if (pidConfig.baseSpeed > 0) {
-                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up): Tăng dần tốc độ từ 38 lên baseSpeed trong ~200ms
+                // 1. KHỞI ĐỘNG MỀM (Soft-Start Ramp-up)
                 if (s_ramped_base < 38.0f) {
                     s_ramped_base = 38.0f;
                 }
                 if (s_ramped_base < (float)pidConfig.baseSpeed) {
-                    s_ramped_base += 1.0f; // Mỗi chu kỳ 2ms tăng 1 PWM
+                    s_ramped_base += 1.0f;
                     if (s_ramped_base > (float)pidConfig.baseSpeed) s_ramped_base = (float)pidConfig.baseSpeed;
                 } else if (s_ramped_base > (float)pidConfig.baseSpeed) {
                     s_ramped_base -= 2.0f;
@@ -410,18 +440,19 @@ void pid_line_follow_step(void) {
                 int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
                 if (currentBase < 40) currentBase = 40;
 
-                // (Đã bỏ auto_boost: không tự cộng thêm ga, tốc độ = đúng baseSpeed cài đặt)
-                leftSpeed  = currentBase + (int16_t)lastCorrection;
-                rightSpeed = currentBase - (int16_t)lastCorrection;
+                // (Đã bỏ auto_boost theo commit trên origin/main: không tự cộng thêm ga, tốc độ = đúng baseSpeed cài đặt)
+                leftSpeed  = currentBase - (int16_t)lastCorrection;
+                rightSpeed = currentBase + (int16_t)lastCorrection;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
                 rightSpeed = clamp_int16(rightSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
             } else {
                 // CHẾ ĐỘ TEST CĂN TÂM TĨNH TRÊN BÀN (baseSpeed = 0):
-                // Lệch trái -> bánh quay đưa về phải; Lệch phải -> bánh quay đưa về trái; Chuẩn tâm -> đứng yên!
-                leftSpeed  = clamp_int16((int16_t)lastCorrection, -120, 120);
-                rightSpeed = clamp_int16(-(int16_t)lastCorrection, -120, 120);
+                // Lệch trái (error > 0 => lastCorrection > 0) => Left lùi, Right tiến => xoay trái
+                // Lệch phải (error < 0 => lastCorrection < 0) => Left tiến, Right lùi => xoay phải
+                leftSpeed  = clamp_int16(-(int16_t)lastCorrection, -120, 120);
+                rightSpeed = clamp_int16((int16_t)lastCorrection, -120, 120);
             }
 
             motor_set_speeds(leftSpeed, rightSpeed);
@@ -454,9 +485,9 @@ void pid_line_follow_step(void) {
             }
 
             // Xoay tại chỗ theo hướng nhìn thấy vạch lần cuối với lực mạnh
-            if (lastKnownDirection < 0 || lastKnownPosition < -5.0f || lastError < -5.0f) {
+            if (lastKnownDirection < 0 || lastKnownPosition < -5.0f) {
                 motor_set_speeds(t_rev, t_fwd); // Giật xoay mạnh tìm vạch bên trái
-            } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f || lastError > 5.0f) {
+            } else if (lastKnownDirection > 0 || lastKnownPosition > 5.0f) {
                 motor_set_speeds(t_fwd, t_rev); // Giật xoay mạnh tìm vạch bên phải
             } else {
                 // Nếu hướng = 0 (trước đó đi thẳng), dùng lastKnownPosition để quyết định xoay

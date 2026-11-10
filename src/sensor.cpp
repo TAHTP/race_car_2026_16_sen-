@@ -1,6 +1,7 @@
 #include "sensor.h"
 #include "config.h"
 #include <Arduino.h>
+#include <soc/gpio_struct.h>
 
 uint16_t sensorRaw[N_SENSORS] = {0};
 uint16_t minValues[N_SENSORS] = {0};
@@ -16,16 +17,34 @@ static uint32_t s_calib_duration_ms = 4000;
 static bool s_global_black_is_higher = true; // ĐÃ CHỐT: Mắt đọc Vạch ĐEN = ADC CAO, Nền TRẮNG = ADC THẤP
 static int16_t s_last_line_pos = 7500;
 
+// Bitmask của 4 chân Mux (GPIO 17, 18, 19, 23 - thuộc thanh ghi GPIO 0..31 của ESP32)
+static const uint32_t MUX_ALL_PINS_MASK = (1UL << PIN_MUX_A) | (1UL << PIN_MUX_B) | 
+                                          (1UL << PIN_MUX_C) | (1UL << PIN_MUX_D);
+
+// Bảng tra cứu Set Mask và Clear Mask cho 16 kênh Mux (0..15)
+static uint32_t s_mux_set_mask[16];
+static uint32_t s_mux_clr_mask[16];
+
 void sensor_init(void) {
     pinMode(PIN_MUX_A, OUTPUT);
     pinMode(PIN_MUX_B, OUTPUT);
     pinMode(PIN_MUX_C, OUTPUT);
     pinMode(PIN_MUX_D, OUTPUT);
 
-    digitalWrite(PIN_MUX_A, LOW);
-    digitalWrite(PIN_MUX_B, LOW);
-    digitalWrite(PIN_MUX_C, LOW);
-    digitalWrite(PIN_MUX_D, LOW);
+    // Khởi tạo bảng tra cứu thanh ghi cho 16 kênh Mux để chuyển kênh trong 4ns
+    for (uint8_t ch = 0; ch < 16; ch++) {
+        uint32_t sm = 0;
+        if (ch & 0x01) sm |= (1UL << PIN_MUX_A);
+        if (ch & 0x02) sm |= (1UL << PIN_MUX_B);
+        if (ch & 0x04) sm |= (1UL << PIN_MUX_C);
+        if (ch & 0x08) sm |= (1UL << PIN_MUX_D);
+        s_mux_set_mask[ch] = sm;
+        s_mux_clr_mask[ch] = MUX_ALL_PINS_MASK & (~sm);
+    }
+
+    // Đặt kênh 0 ban đầu bằng thanh ghi trực tiếp
+    GPIO.out_w1tc = MUX_ALL_PINS_MASK;
+    GPIO.out_w1ts = s_mux_set_mask[0];
 
     pinMode(PIN_LINE_SIG, INPUT);
     analogReadResolution(12); // ADC 12-bit: 0 - 4095
@@ -41,21 +60,20 @@ void sensor_init(void) {
 
 void sensor_mux_select(uint8_t channel) {
     channel &= 0x0F;
-    digitalWrite(PIN_MUX_A, (channel & 0x01) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_B, (channel & 0x02) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_C, (channel & 0x04) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_D, (channel & 0x08) ? HIGH : LOW);
-    delayMicroseconds(2);
+    // Chuyển kênh bằng thanh ghi phần cứng trực tiếp (2 chu kỳ CPU ~ 8ns)
+    GPIO.out_w1tc = s_mux_clr_mask[channel];
+    GPIO.out_w1ts = s_mux_set_mask[channel];
+    delayMicroseconds(1); // 1µs để ổn định điện áp analog qua MUX CD74HC4067 (propagation delay ~30ns)
 }
 
 uint16_t sensor_read_mux(uint8_t channel) {
     sensor_mux_select(channel);
 
-    uint32_t sum = 0;
-    for (int s = 0; s < ADC_SAMPLES; s++) {
-        sum += analogRead(PIN_LINE_SIG);
-    }
-    return (uint16_t)(sum / ADC_SAMPLES);
+    // Lấy 2 mẫu liên tiếp: đủ để triệt tiêu nhiễu lượng tử hóa ADC,
+    // kết hợp bộ lọc IIR (85/15) ở vòng ngoài đảm bảo tín hiệu phẳng và siêu nhạy
+    uint32_t sum = analogRead(PIN_LINE_SIG);
+    sum += analogRead(PIN_LINE_SIG);
+    return (uint16_t)(sum >> 1);
 }
 
 void sensor_read_all(void) {
