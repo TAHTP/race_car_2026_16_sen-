@@ -507,8 +507,12 @@
 
         <div style="display: flex; gap: 6px; margin-top: 10px;">
             <button class="btn-sub primary" style="flex: 1;" onclick="addManualRow()">➕ THÊM MỐC</button>
-            <button class="btn-sub success" style="flex: 1;" onclick="saveMapToCar()">💾 LƯU VÀO XE</button>
+            <button class="btn-sub success" style="flex: 1;" onclick="saveMapToCar()">💾 LƯU MỐC</button>
             <button class="btn-sub danger" onclick="clearAllWps()">🗑️</button>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <button id="btnSaveAll" class="btn-sub" style="width: 100%; font-size: 0.92rem; padding: 12px; font-weight: 900; background: linear-gradient(135deg, #0284c7, #0d9488); border: 1px solid #38bdf8; box-shadow: 0 0 14px rgba(56, 189, 248, 0.4); border-radius: 8px; transition: all 0.2s; cursor: pointer;" onclick="saveAllToCar()">💾 LƯU & NẠP TOÀN BỘ VÀO XE</button>
         </div>
     </div>
 
@@ -675,23 +679,51 @@
                 document.getElementById('btnConnect').classList.add('connected');
                 document.getElementById('bleText').innerText = '✅ ĐÃ KẾT NỐI';
                 log('✅ Kết nối thành công!');
+
+                // Tự động đồng bộ thông số từ xe lên Web
+                sendCmd('CMD:GET_CONFIG');
+                sendCmd(`CMD:GET_MAP:${activeMap}`);
             } catch (e) {
                 log('❌ Lỗi BLE: ' + e);
             }
         }
 
+        // ================= HÀNG ĐỢI LỆNH BLE (COMMAND QUEUE) =================
+        // Chống nghẽn gói tin: mọi lệnh nạp/lưu đều được xếp hàng gửi tuần tự an toàn!
+        let cmdQueue = [];
+        let isProcessingQueue = false;
+
         async function sendCmd(cmd) {
-            if (!rxChar) {
-                log('⚠️ Chưa kết nối BLE!');
-                return;
+            return new Promise((resolve, reject) => {
+                cmdQueue.push({ cmd, resolve, reject });
+                processQueue();
+            });
+        }
+
+        async function processQueue() {
+            if (isProcessingQueue || cmdQueue.length === 0) return;
+            isProcessingQueue = true;
+
+            while (cmdQueue.length > 0) {
+                const item = cmdQueue.shift();
+                if (!rxChar) {
+                    log('⚠️ Chưa kết nối BLE!');
+                    item.reject('Chưa kết nối BLE');
+                    continue;
+                }
+                try {
+                    const enc = new TextEncoder();
+                    await rxChar.writeValueWithoutResponse(enc.encode(item.cmd));
+                    log('📤 ' + item.cmd);
+                    item.resolve(true);
+                    // Nghỉ 40ms giữa các gói tin BLE để ESP32 không bị ngộp buffer
+                    await new Promise(r => setTimeout(r, 40));
+                } catch (e) {
+                    log('❌ Lỗi gửi: ' + e);
+                    item.reject(e);
+                }
             }
-            try {
-                const enc = new TextEncoder();
-                await rxChar.writeValueWithoutResponse(enc.encode(cmd));
-                log('📤 ' + cmd);
-            } catch (e) {
-                log('❌ Lỗi gửi: ' + e);
-            }
+            isProcessingQueue = false;
         }
 
         // ================= TELEMETRY RECEIVE =================
@@ -708,6 +740,7 @@
                     const pos = (parseFloat(p[2]) || 0) / 10.0;
                     const ml = parseInt(p[3]) || 0;
                     const mr = parseInt(p[4]) || 0;
+                    const wp = parseInt(p[6]) || 0;
                     const state = parseInt(p[7]) || 0;
                     const mask = p.length >= 9 ? (parseInt(p[8]) || 0) : 0;
 
@@ -728,7 +761,18 @@
                     // Cập nhật trạng thái
                     let st = 'STOPPED';
                     if (state === 1) st = '🐢 QUÉT MAP...';
-                    else if (state === 2) st = '🚀 ĐUA BUNG GA!';
+                    else if (state === 2) {
+                        st = `🚀 ĐUA MỐC ${wp}`;
+                        // Highlight mốc đang chạy trên bảng
+                        const rows = document.querySelectorAll('#wpTableBody tr');
+                        rows.forEach((r, idx) => {
+                            if (idx === wp) {
+                                r.style.background = 'rgba(56, 189, 248, 0.22)';
+                            } else {
+                                r.style.background = '';
+                            }
+                        });
+                    }
                     else if (state === 3) st = '🎯 ĐANG CĂN TÂM...';
                     const elSt = document.getElementById('carStateBadge');
                     if (elSt) elSt.innerText = st;
@@ -756,6 +800,29 @@
                     }
                     const elBlk = document.getElementById('blackCountBadge');
                     if (elBlk) elBlk.innerText = `${blk}/16 ĐEN`;
+                }
+            } else if (raw.startsWith('LOG:WP_ACT:')) {
+                // LOG:WP_ACT:idx:ticks:spd:kp:kd:act
+                const parts = raw.split(':');
+                const wp = parts[2];
+                const ticks = parts[3];
+                const spd = parts[4];
+                const kp = parts[5];
+                const kd = parts[6];
+                const act = parts[7];
+                const actNames = ['PID chuẩn', 'Ép Trái', 'Ép Phải', 'Khóa Thẳng', 'Phanh Đích'];
+                const actStr = actNames[parseInt(act)] || 'Chuẩn';
+                log(`📍 [MỐC ${wp}] ${ticks} xung | Tốc: ${spd} | Kp: ${kp}, Kd: ${kd} | ${actStr}`);
+            } else if (raw.startsWith('CFG:')) {
+                // CFG:kp:ki:kd:spd:turn
+                const p = raw.split(':');
+                if (p.length >= 6) {
+                    document.getElementById('cfgKp').value = parseFloat(p[1]) || 4.0;
+                    document.getElementById('cfgKi').value = parseFloat(p[2]) || 0.0;
+                    document.getElementById('cfgKd').value = parseFloat(p[3]) || 20.0;
+                    document.getElementById('cfgSpeed').value = parseInt(p[4]) || 120;
+                    document.getElementById('cfgTurnSpeed').value = parseInt(p[5]) || 130;
+                    log(`📥 Đã đồng bộ từ xe: Kp=${p[1]}, Kd=${p[3]}, Tốc=${p[4]}, Rẽ 90°=${p[5]}`);
                 }
             } else if (raw.startsWith('LOG:RACE_FINISH:')) {
                 const finishSec = parseFloat(raw.substring(16));
@@ -965,19 +1032,94 @@
         }
 
         async function saveMapToCar() {
+            if (!rxChar) {
+                log('⚠️ Chưa kết nối BLE!');
+                alert('Vui lòng kết nối BLE trước khi lưu mốc!');
+                return;
+            }
             const list = userMaps[activeMap];
             log(`Đang lưu ${list.length} mốc Map ${activeMap + 1} vào xe...`);
             await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
 
             for (let i = 0; i < list.length; i++) {
                 const w = list[i];
-                await new Promise(r => setTimeout(r, 40));
                 const kp = (w.kp !== undefined) ? w.kp : 0;
                 const kd = (w.kd !== undefined) ? w.kd : 0;
                 await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}:${kp}:${kd}`);
             }
             await sendCmd('CMD:SAVE');
-            log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);
+            log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash v3!`);
+        }
+
+        async function saveAllToCar() {
+            const btn = document.getElementById('btnSaveAll');
+            if (!rxChar) {
+                log('⚠️ Chưa kết nối BLE!');
+                alert('Vui lòng kết nối BLE trước khi nạp thông số!');
+                return;
+            }
+
+            const kp = document.getElementById('cfgKp').value;
+            const ki = document.getElementById('cfgKi').value;
+            const kd = document.getElementById('cfgKd').value;
+            const spd = document.getElementById('cfgSpeed').value;
+            const turn = document.getElementById('cfgTurnSpeed').value;
+            const list = userMaps[activeMap];
+
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.85';
+                btn.innerText = '⏳ ĐANG NẠP THÔNG SỐ CHUNG...';
+            }
+
+            try {
+                log(`🚀 [NẠP TOÀN BỘ] Bắt đầu đẩy PID chung, Tốc rẽ & ${list.length} mốc xuống xe...`);
+
+                // 1. Nạp PID chung, Tốc quét, Tốc rẽ 90°
+                await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
+                await sendCmd(`CMD:SCAN_SPD:${spd}`);
+                await sendCmd(`CMD:TURN:${turn}`);
+
+                // 2. Xóa mốc cũ trên xe của Map hiện tại
+                if (btn) btn.innerText = `⏳ ĐANG XÓA MỐC CŨ MAP ${activeMap + 1}...`;
+                await sendCmd(`CMD:WP_CLEAR:${activeMap}`);
+
+                // 3. Nạp tuần tự từng mốc
+                for (let i = 0; i < list.length; i++) {
+                    if (btn) btn.innerText = `⏳ ĐANG LƯU MỐC ${i + 1}/${list.length}...`;
+                    const w = list[i];
+                    const wKp = (w.kp !== undefined) ? w.kp : 0;
+                    const wKd = (w.kd !== undefined) ? w.kd : 0;
+                    await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}:${wKp}:${wKd}`);
+                }
+
+                // 4. Lưu vĩnh viễn vào Flash NVS v3
+                if (btn) btn.innerText = '⏳ ĐANG LƯU FLASH V3...';
+                await sendCmd('CMD:SAVE');
+
+                log(`🎉 THÀNH CÔNG: Đã nạp & lưu vĩnh viễn toàn bộ vào Flash v3!`);
+                if (btn) {
+                    btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                    btn.style.borderColor = '#34d399';
+                    btn.style.boxShadow = '0 0 16px rgba(16, 185, 129, 0.7)';
+                    btn.innerText = '✅ ĐÃ LƯU TOÀN BỘ VÀO XE!';
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                        btn.style.background = 'linear-gradient(135deg, #0284c7, #0d9488)';
+                        btn.style.borderColor = '#38bdf8';
+                        btn.style.boxShadow = '0 0 14px rgba(56, 189, 248, 0.4)';
+                        btn.innerText = '💾 LƯU & NẠP TOÀN BỘ VÀO XE';
+                    }, 2200);
+                }
+            } catch (e) {
+                log('❌ Lỗi khi nạp: ' + e);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.innerText = '❌ LỖI NẠP - THỬ LẠI';
+                }
+            }
         }
 
         renderWpTable();

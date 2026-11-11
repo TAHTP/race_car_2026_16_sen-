@@ -182,6 +182,12 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         } else if (rxValue.startsWith("CMD:GET_MAP:")) {
             uint8_t m = rxValue.substring(12).toInt();
             ble_send_map_data(m);
+        } else if (rxValue == "CMD:GET_CONFIG") {
+            char cfgBuf[64];
+            snprintf(cfgBuf, sizeof(cfgBuf), "CFG:%.2f:%.2f:%.2f:%d:%d",
+                     pid_get_default_kp(), 0.0f, pid_get_default_kd(),
+                     car_get_scan_speed(), pid_get_turn_speed());
+            ble_send_string(cfgBuf);
         }
         else if (rxValue == "CMD:POLARITY:TOGGLE") {
             bool cur = sensor_get_polarity();

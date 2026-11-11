@@ -13,6 +13,7 @@ static volatile float s_live_line_pos = 0.0f; // Vị trí tim line thời gian 
 static uint8_t s_active_wp_idx = 0;
 static uint8_t s_active_action = 0;
 static int16_t s_active_speed = 120;
+static uint8_t s_last_notified_wp = 255;
 
 // Task handle
 static TaskHandle_t s_control_task_handle = NULL;
@@ -116,6 +117,7 @@ void controlTask(void *pvParameters) {
             s_active_wp_idx = 0;
             s_active_action = ACTION_NORMAL;
             s_finish_debounce = 0;
+            s_last_notified_wp = 255;
 
             if (mode == CAR_MODE_SCAN || mode == CAR_MODE_RACE) {
                 pid_set_auto_mode(true);
@@ -224,6 +226,14 @@ void controlTask(void *pvParameters) {
             s_active_action = act;
             s_active_wp_idx = wp_idx;
 
+            if (mode == CAR_MODE_RACE && s_last_notified_wp != wp_idx) {
+                s_last_notified_wp = wp_idx;
+                char wpBuf[64];
+                snprintf(wpBuf, sizeof(wpBuf), "LOG:WP_ACT:%u:%ld:%d:%.1f:%.1f:%u",
+                         wp_idx, (long)avg_ticks, tgt_spd, tgt_kp, tgt_kd, act);
+                ble_send_string(wpBuf);
+            }
+
             // Nạp thông số vào bộ điều khiển (tốc độ, hành vi, và PID riêng của mốc)
             pid_set_base_speed(tgt_spd);
             pid_set_sector_action(act);
@@ -234,6 +244,7 @@ void controlTask(void *pvParameters) {
         } else {
             // Xe đang dừng: Khóa cứng động cơ nhưng CẢM BIẾN VÀ ENCODER VẪN HOẠT ĐỘNG!
             s_finish_debounce = 0;
+            s_last_notified_wp = 255;
             pid_set_sector_action(ACTION_NORMAL);
             s_active_wp_idx = 0;
             s_active_action = ACTION_NORMAL;

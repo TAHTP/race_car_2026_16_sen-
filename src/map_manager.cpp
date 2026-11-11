@@ -29,15 +29,19 @@ void map_manager_init(void) {
 }
 
 void map_save_to_flash(void) {
-    prefs.begin("race_maps_v2", false);
+    prefs.begin("race_maps_v3", false);
     prefs.putBytes("map_data", (const void*)s_maps, sizeof(s_maps));
     prefs.putUChar("sel_map", s_selected_map);
     prefs.putBool("is_right", s_is_right_lane);
+    prefs.putFloat("def_kp", pid_get_default_kp());
+    prefs.putFloat("def_kd", pid_get_default_kd());
+    prefs.putShort("turn_spd", pid_get_turn_speed());
+    prefs.putShort("scan_spd", car_get_scan_speed());
     prefs.end();
 }
 
 bool map_load_from_flash(void) {
-    prefs.begin("race_maps_v2", true);
+    prefs.begin("race_maps_v3", true);
     if (!prefs.isKey("map_data")) {
         prefs.end();
         return false;
@@ -50,6 +54,19 @@ bool map_load_from_flash(void) {
     s_selected_map = prefs.getUChar("sel_map", 0);
     if (s_selected_map >= NUM_MAPS) s_selected_map = 0;
     s_is_right_lane = prefs.getBool("is_right", false);
+
+    if (prefs.isKey("def_kp")) {
+        float kp = prefs.getFloat("def_kp", pid_get_default_kp());
+        float kd = prefs.getFloat("def_kd", pid_get_default_kd());
+        pid_set_default_tunings(kp, 0.0f, kd);
+    }
+    if (prefs.isKey("turn_spd")) {
+        pid_set_turn_speed(prefs.getShort("turn_spd", 130));
+    }
+    if (prefs.isKey("scan_spd")) {
+        car_set_scan_speed(prefs.getShort("scan_spd", 120));
+    }
+
     prefs.end();
     return true;
 }
