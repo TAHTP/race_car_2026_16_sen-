@@ -450,6 +450,15 @@
         </div>
 
         <div class="form-row">
+            <label>Chỉnh cho phần:</label>
+            <select id="cfgProfile" class="form-input" onchange="switchPidProfile(parseInt(this.value))">
+                <option value="0">PID chuẩn (thẳng)</option>
+                <option value="1">Ép Trái</option>
+                <option value="2">Ép Phải</option>
+            </select>
+        </div>
+
+        <div class="form-row">
             <label>Kp (Tỉ lệ):</label>
             <input type="number" step="0.1" id="cfgKp" class="form-input" value="4.0">
             <label style="margin-left: 6px;">Kd (Vi phân):</label>
@@ -825,6 +834,30 @@
         }
 
         // ================= PID CONFIG =================
+        // 3 bộ PID + tốc độ cua riêng: 0 = PID chuẩn (thẳng), 1 = Ép trái, 2 = Ép phải
+        const PID_FIELDS = { kp: 'cfgKp', ki: 'cfgKi', kd: 'cfgKd', turn: 'cfgTurnSpeed' };
+        let pidProfiles = [0, 1, 2].map(() => ({ kp: '4.0', ki: '0.0', kd: '20.0', turn: '130' }));
+        let curProfile = 0;
+        try {
+            const s = JSON.parse(localStorage.getItem('racecar_pid_profiles_v1'));
+            if (Array.isArray(s) && s.length === 3) pidProfiles = s;
+        } catch (e) {}
+
+        function readPidForm() {
+            for (const k in PID_FIELDS) pidProfiles[curProfile][k] = document.getElementById(PID_FIELDS[k]).value;
+            try { localStorage.setItem('racecar_pid_profiles_v1', JSON.stringify(pidProfiles)); } catch (e) {}
+        }
+
+        function showPidProfile() {
+            for (const k in PID_FIELDS) document.getElementById(PID_FIELDS[k]).value = pidProfiles[curProfile][k];
+        }
+
+        function switchPidProfile(idx) {
+            readPidForm();
+            curProfile = idx;
+            showPidProfile();
+        }
+
         async function sendPID() {
             const btn = document.getElementById('btnSendPID');
             if (!rxChar) {
@@ -842,11 +875,8 @@
                 return;
             }
 
-            const kp = document.getElementById('cfgKp').value;
-            const ki = document.getElementById('cfgKi').value;
-            const kd = document.getElementById('cfgKd').value;
+            readPidForm();
             const spd = document.getElementById('cfgSpeed').value;
-            const turn = document.getElementById('cfgTurnSpeed').value;
 
             if (btn) {
                 btn.style.background = '#0284c7';
@@ -855,7 +885,12 @@
                 btn.innerText = '⏳ ĐANG GỬI XUỐNG XE...';
             }
 
-            await sendCmd(`CMD:PID:${kp}:${ki}:${kd}:${spd}:${turn}`);
+            // Nạp cả 3 bộ PID (chuẩn / ép trái / ép phải) trong 1 lần bấm
+            for (let i = 0; i < 3; i++) {
+                const p = pidProfiles[i];
+                await sendCmd(`CMD:PID:${p.kp}:${p.ki}:${p.kd}:${spd}:${p.turn}:${i}`);
+                await new Promise(r => setTimeout(r, 40));
+            }
             await sendCmd(`CMD:SCAN_SPD:${spd}`);
 
             // Tự kích hoạt phản hồi thành công sau 200ms dự phòng
@@ -970,6 +1005,7 @@
 
         renderWpTable();
         updateBestLapDisplay();
+        showPidProfile();
     </script>
 </body>
 </html>

@@ -37,10 +37,13 @@ typedef struct {
  */
 void pid_init(float kp, float ki, float kd, int16_t baseSpeed);
 
+#define PID_NUM_PROFILES 3 // 0: PID chuẩn (thẳng), 1: Ép trái, 2: Ép phải
+
 /**
- * @brief Cập nhật thông số Kp, Ki, Kd
+ * @brief Cập nhật Kp, Ki, Kd và tốc độ cua riêng cho 1 phần (profile)
  */
-void pid_set_tunings(float kp, float ki, float kd);
+void pid_set_profile(uint8_t profile, float kp, float ki, float kd, int16_t turnSpeed);
+int16_t pid_get_profile_turn_speed(uint8_t profile);
 
 /**
  * @brief Cập nhật tốc độ nền baseSpeed (0 - 255)

@@ -23,6 +23,18 @@ static PID_Config_t pidConfig = {
     .turnSpeed = 130
 };
 
+// Bộ PID + tốc độ cua riêng cho từng phần: 0 = PID chuẩn (thẳng), 1 = Ép trái, 2 = Ép phải
+typedef struct {
+    float   Kp, Ki, Kd;
+    int16_t turnSpeed;
+} PID_Profile_t;
+
+static PID_Profile_t s_profiles[PID_NUM_PROFILES] = {
+    { 4.0f, 0.0f, 20.0f, 130 },
+    { 4.0f, 0.0f, 20.0f, 130 },
+    { 4.0f, 0.0f, 20.0f, 130 }
+};
+
 static bool autoMode = false;
 static LineCase_t currentCase = LINE_CASE_STOPPED;
 static float lastError = 0.0f;
@@ -49,10 +61,22 @@ static inline int16_t clamp_int16(int16_t v, int16_t min_v, int16_t max_v) {
     return v;
 }
 
+// Nạp bộ PID của phần đang chạy vào pidConfig (mọi chỗ khác chỉ đọc pidConfig)
+static void apply_active_profile(void) {
+    uint8_t idx = (s_sector_action == 1 || s_sector_action == 2) ? s_sector_action : 0;
+    pidConfig.Kp = s_profiles[idx].Kp;
+    pidConfig.Ki = s_profiles[idx].Ki;
+    pidConfig.Kd = s_profiles[idx].Kd;
+    pidConfig.turnSpeed = s_profiles[idx].turnSpeed;
+}
+
 void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
-    pidConfig.Kp = kp;
-    pidConfig.Ki = ki;
-    pidConfig.Kd = kd;
+    for (uint8_t i = 0; i < PID_NUM_PROFILES; i++) {
+        s_profiles[i].Kp = kp;
+        s_profiles[i].Ki = ki;
+        s_profiles[i].Kd = kd;
+    }
+    apply_active_profile();
     pidConfig.baseSpeed = baseSpeed;
     lastError = 0.0f;
     integralError = 0.0f;
@@ -67,10 +91,17 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
     s_ramped_base = 0.0f;
 }
 
-void pid_set_tunings(float kp, float ki, float kd) {
-    pidConfig.Kp = kp;
-    pidConfig.Ki = ki;
-    pidConfig.Kd = kd;
+void pid_set_profile(uint8_t profile, float kp, float ki, float kd, int16_t turnSpeed) {
+    if (profile >= PID_NUM_PROFILES) return;
+    s_profiles[profile].Kp = kp;
+    s_profiles[profile].Ki = ki;
+    s_profiles[profile].Kd = kd;
+    s_profiles[profile].turnSpeed = clamp_int16(turnSpeed, 60, 220);
+    apply_active_profile();
+}
+
+int16_t pid_get_profile_turn_speed(uint8_t profile) {
+    return (profile < PID_NUM_PROFILES) ? s_profiles[profile].turnSpeed : 0;
 }
 
 void pid_set_base_speed(int16_t speed) {
@@ -78,7 +109,8 @@ void pid_set_base_speed(int16_t speed) {
 }
 
 void pid_set_turn_speed(int16_t speed) {
-    pidConfig.turnSpeed = clamp_int16(speed, 60, 220);
+    s_profiles[0].turnSpeed = clamp_int16(speed, 60, 220); // Lệnh cũ CMD:TURN: chỉ áp cho PID chuẩn
+    apply_active_profile();
 }
 
 int16_t pid_get_turn_speed(void) {
@@ -87,6 +119,7 @@ int16_t pid_get_turn_speed(void) {
 
 void pid_set_sector_action(uint8_t action) {
     s_sector_action = action;
+    apply_active_profile();
 }
 
 uint8_t pid_get_sector_action(void) {
@@ -100,7 +133,7 @@ void pid_set_auto_mode(bool enable) {
     lastKnownPosition = 0.0f;
     s_corner_latch = 0;
     s_corner_latch_time = 0;
-    s_sector_action = 0;
+    pid_set_sector_action(0);
     if (!autoMode) {
         currentCase = LINE_CASE_STOPPED;
         s_ramped_base = 0.0f;
@@ -126,9 +159,9 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
     int start_i = 0;
     int end_i = N_SENSORS - 1;
     if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Ép chỉ đọc nhánh trái
-        end_i = 8;
+        end_i = 9;   // Bỏ 6 mắt phải (10..15)
     } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Ép chỉ đọc nhánh phải
-        start_i = 7;
+        start_i = 6; // Bỏ 6 mắt trái (0..5)
     }
 
     // Quét các mắt theo kịch bản với giá trị chuẩn hóa Analog (0 - 1000)
