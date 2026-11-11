@@ -123,6 +123,7 @@ void controlTask(void *pvParameters) {
                 ble_send_string("LOG:AUTO_START");
             } else {
                 pid_set_auto_mode(false);
+                pid_set_tunings(pid_get_default_kp(), 0.0f, pid_get_default_kd());
                 motor_stop();
             }
         }
@@ -148,12 +149,16 @@ void controlTask(void *pvParameters) {
             int16_t tgt_spd = 100;
             uint8_t act = 0;
             uint8_t wp_idx = 0;
+            float tgt_kp = pid_get_default_kp();
+            float tgt_kd = pid_get_default_kd();
 
             if (mode == CAR_MODE_SCAN) {
                 // LƯỢT 1: Quét sa bàn chậm, bám line PID cơ bản an toàn tuyệt đối (tốc độ cài đặt)
                 tgt_spd = car_get_scan_speed();
                 act = ACTION_NORMAL;
                 wp_idx = 0;
+                tgt_kp = pid_get_default_kp();
+                tgt_kd = pid_get_default_kd();
 
                 // Lọc Debounce vạch đích 10 chu kỳ liên tiếp (20ms) chống nhiễu quang và ngã 4 đi chéo
                 if (is_crossline_candidate) {
@@ -182,7 +187,7 @@ void controlTask(void *pvParameters) {
                 }
             } else {
                 // LƯỢT 2: Chạy đua bung tốc độ theo bảng Waypoint sa bàn
-                map_get_current_action(avg_ticks, &tgt_spd, &act, &wp_idx);
+                map_get_current_action(avg_ticks, &tgt_spd, &act, &tgt_kp, &tgt_kd, &wp_idx);
 
                 uint8_t total_wps = map_get_waypoint_count(map_get_selected());
                 bool is_race_finish_candidate = (act == ACTION_BRAKE_STOP) || 
@@ -204,6 +209,7 @@ void controlTask(void *pvParameters) {
                     pid_set_sector_action(ACTION_NORMAL);
                     s_active_wp_idx = 0;
                     s_active_action = ACTION_NORMAL;
+                    pid_set_tunings(pid_get_default_kp(), 0.0f, pid_get_default_kd());
                     motor_stop();
                     car_set_run_mode(CAR_MODE_STOP);
                     s_prev_mode = CAR_MODE_STOP;
@@ -218,9 +224,10 @@ void controlTask(void *pvParameters) {
             s_active_action = act;
             s_active_wp_idx = wp_idx;
 
-            // Nạp thông số vào bộ điều khiển
+            // Nạp thông số vào bộ điều khiển (tốc độ, hành vi, và PID riêng của mốc)
             pid_set_base_speed(tgt_spd);
             pid_set_sector_action(act);
+            pid_set_tunings(tgt_kp, 0.0f, tgt_kd);
 
             // Thực thi 1 bước PID
             pid_line_follow_step();

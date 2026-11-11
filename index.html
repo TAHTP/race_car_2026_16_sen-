@@ -492,7 +492,9 @@
                     <tr>
                         <th style="width: 25px;">#</th>
                         <th>Từ Xung (Bắt đầu)</th>
-                        <th style="width: 55px;">Tốc độ</th>
+                        <th style="width: 50px;">Tốc độ</th>
+                        <th style="width: 48px;">Kp</th>
+                        <th style="width: 48px;">Kd</th>
                         <th>Hành động</th>
                         <th style="width: 25px;">Xóa</th>
                     </tr>
@@ -900,10 +902,14 @@
 
             list.forEach((w, i) => {
                 const tr = document.createElement('tr');
+                const kpVal = (w.kp !== undefined && w.kp > 0) ? w.kp : '';
+                const kdVal = (w.kd !== undefined && w.kd > 0) ? w.kd : '';
                 tr.innerHTML = `
                     <td style="font-weight: 800;">${i}</td>
                     <td><input type="number" class="form-input" style="padding: 2px;" value="${w.ticks}" onchange="editWp(${i}, 'ticks', this.value)"></td>
                     <td><input type="number" class="form-input" style="padding: 2px;" value="${w.speed}" onchange="editWp(${i}, 'speed', this.value)"></td>
+                    <td><input type="number" step="0.1" class="form-input" style="padding: 2px;" placeholder="Def" value="${kpVal}" onchange="editWp(${i}, 'kp', this.value)"></td>
+                    <td><input type="number" step="0.5" class="form-input" style="padding: 2px;" placeholder="Def" value="${kdVal}" onchange="editWp(${i}, 'kd', this.value)"></td>
                     <td>
                         <select class="form-input" style="padding: 2px; font-size: 0.72rem;" onchange="editWp(${i}, 'action', this.value)">
                             <option value="0" ${w.action === 0 ? 'selected' : ''}>PID chuẩn</option>
@@ -921,7 +927,7 @@
 
         function captureCurrentTicks() {
             const ticks = lastLiveTicks > 0 ? lastLiveTicks : 1000;
-            userMaps[activeMap].push({ ticks: ticks, speed: 110, action: 0 });
+            userMaps[activeMap].push({ ticks: ticks, speed: 110, action: 0, kp: 0, kd: 0 });
             saveLocalMaps();
             renderWpTable();
             log(`📍 Đã chụp mốc bắt đầu: ${ticks} xung`);
@@ -930,13 +936,17 @@
         function addManualRow() {
             const list = userMaps[activeMap];
             const nextTicks = list.length > 0 ? list[list.length - 1].ticks + 1000 : 1000;
-            list.push({ ticks: nextTicks, speed: 110, action: 0 });
+            list.push({ ticks: nextTicks, speed: 110, action: 0, kp: 0, kd: 0 });
             saveLocalMaps();
             renderWpTable();
         }
 
         function editWp(idx, f, v) {
-            userMaps[activeMap][idx][f] = parseInt(v);
+            if (f === 'kp' || f === 'kd') {
+                userMaps[activeMap][idx][f] = v ? parseFloat(v) : 0;
+            } else {
+                userMaps[activeMap][idx][f] = parseInt(v);
+            }
             saveLocalMaps();
         }
 
@@ -962,7 +972,9 @@
             for (let i = 0; i < list.length; i++) {
                 const w = list[i];
                 await new Promise(r => setTimeout(r, 40));
-                await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}`);
+                const kp = (w.kp !== undefined) ? w.kp : 0;
+                const kd = (w.kd !== undefined) ? w.kd : 0;
+                await sendCmd(`CMD:WP_SET:${activeMap}:${i}:${w.ticks}:${w.speed}:${w.action}:${kp}:${kd}`);
             }
             await sendCmd('CMD:SAVE');
             log(`✅ Đã lưu vĩnh viễn Map ${activeMap + 1} vào Flash NVS!`);

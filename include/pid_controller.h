@@ -41,6 +41,9 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed);
  * @brief Cập nhật thông số Kp, Ki, Kd
  */
 void pid_set_tunings(float kp, float ki, float kd);
+void pid_set_default_tunings(float kp, float ki, float kd);
+float pid_get_default_kp(void);
+float pid_get_default_kd(void);
 
 /**
  * @brief Cập nhật tốc độ nền baseSpeed (0 - 255)

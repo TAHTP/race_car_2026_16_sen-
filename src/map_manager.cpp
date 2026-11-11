@@ -1,5 +1,6 @@
 #include "map_manager.h"
 #include "ble_handler.h"
+#include "pid_controller.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -71,12 +72,14 @@ bool map_is_right_lane(void) {
     return s_is_right_lane;
 }
 
-bool map_set_waypoint(uint8_t map_idx, uint8_t wp_idx, uint32_t ticks, int16_t speed, uint8_t action) {
+bool map_set_waypoint(uint8_t map_idx, uint8_t wp_idx, uint32_t ticks, int16_t speed, uint8_t action, float kp, float kd) {
     if (map_idx >= NUM_MAPS || wp_idx >= MAX_WAYPOINTS) return false;
 
     s_maps[map_idx].wps[wp_idx].start_ticks = ticks;
     s_maps[map_idx].wps[wp_idx].target_speed = speed;
     s_maps[map_idx].wps[wp_idx].action = action;
+    s_maps[map_idx].wps[wp_idx].kp = kp;
+    s_maps[map_idx].wps[wp_idx].kd = kd;
 
     if (wp_idx >= s_maps[map_idx].count) {
         s_maps[map_idx].count = wp_idx + 1;
@@ -102,13 +105,17 @@ const Waypoint_t* map_get_waypoint(uint8_t map_idx, uint8_t wp_idx) {
     return NULL;
 }
 
-void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, uint8_t *out_wp_idx) {
+void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, float *out_kp, float *out_kd, uint8_t *out_wp_idx) {
     MapProfile_t *prof = &s_maps[s_selected_map];
+    float def_kp = pid_get_default_kp();
+    float def_kd = pid_get_default_kd();
 
-    // 1. Nếu không có mốc nào: Chạy PID thuần với tốc độ nền do Web cài đặt
+    // 1. Nếu không có mốc nào: Chạy PID thuần với tốc độ nền và PID mặc định
     if (prof->count == 0) {
         *out_speed = car_get_scan_speed();
         *out_action = ACTION_NORMAL;
+        *out_kp = def_kp;
+        *out_kd = def_kd;
         *out_wp_idx = 0;
         return;
     }
@@ -118,6 +125,8 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
     if (current_ticks < prof->wps[0].start_ticks) {
         *out_speed = car_get_scan_speed();
         *out_action = ACTION_NORMAL;
+        *out_kp = def_kp;
+        *out_kd = def_kd;
         *out_wp_idx = 0;
         return;
     }
@@ -136,6 +145,8 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
             }
 
             *out_action = act;
+            *out_kp = (prof->wps[i].kp > 0.01f) ? prof->wps[i].kp : def_kp;
+            *out_kd = (prof->wps[i].kd > 0.01f) ? prof->wps[i].kd : def_kd;
             *out_wp_idx = (uint8_t)i;
             return;
         }
@@ -143,5 +154,7 @@ void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t 
 
     *out_speed = car_get_scan_speed();
     *out_action = ACTION_NORMAL;
+    *out_kp = def_kp;
+    *out_kd = def_kd;
     *out_wp_idx = 0;
 }

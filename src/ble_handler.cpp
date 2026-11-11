@@ -112,7 +112,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
                 float ki = rxValue.substring(p1 + 1, p2).toFloat();
                 float kd = rxValue.substring(p2 + 1, p3).toFloat();
                 int16_t spd = (p4 > 0) ? rxValue.substring(p3 + 1, p4).toInt() : rxValue.substring(p3 + 1).toInt();
-                pid_set_tunings(kp, ki, kd);
+                pid_set_default_tunings(kp, ki, kd);
                 pid_set_base_speed(spd);
                 car_set_scan_speed(spd);
                 if (p4 > 0) {
@@ -139,20 +139,32 @@ class RxCallbacks : public BLECharacteristicCallbacks {
         }
         // 3. Quản lý Waypoint
         else if (rxValue.startsWith("CMD:WP_SET:")) {
-            // Cú pháp: CMD:WP_SET:<map>:<idx>:<ticks>:<speed>:<action>
+            // Cú pháp: CMD:WP_SET:<map>:<idx>:<ticks>:<speed>:<action>[:<kp>:<kd>]
             int p1 = rxValue.indexOf(':', 11);
             int p2 = rxValue.indexOf(':', p1 + 1);
             int p3 = rxValue.indexOf(':', p2 + 1);
             int p4 = rxValue.indexOf(':', p3 + 1);
+            int p5 = (p4 > 0) ? rxValue.indexOf(':', p4 + 1) : -1;
 
             if (p1 > 0 && p2 > 0 && p3 > 0 && p4 > 0) {
                 uint8_t m = rxValue.substring(11, p1).toInt();
                 uint8_t idx = rxValue.substring(p1 + 1, p2).toInt();
                 uint32_t ticks = rxValue.substring(p2 + 1, p3).toInt();
                 int16_t spd = rxValue.substring(p3 + 1, p4).toInt();
-                uint8_t act = rxValue.substring(p4 + 1).toInt();
+                uint8_t act = (p5 > 0) ? rxValue.substring(p4 + 1, p5).toInt() : rxValue.substring(p4 + 1).toInt();
+                float kp = 0.0f;
+                float kd = 0.0f;
+                if (p5 > 0) {
+                    int p6 = rxValue.indexOf(':', p5 + 1);
+                    if (p6 > 0) {
+                        kp = rxValue.substring(p5 + 1, p6).toFloat();
+                        kd = rxValue.substring(p6 + 1).toFloat();
+                    } else {
+                        kp = rxValue.substring(p5 + 1).toFloat();
+                    }
+                }
 
-                map_set_waypoint(m, idx, ticks, spd, act);
+                map_set_waypoint(m, idx, ticks, spd, act, kp, kd);
                 ble_send_string("ACK:WP_SET_OK");
             }
         } else if (rxValue.startsWith("CMD:WP_CLEAR:")) {
@@ -267,8 +279,8 @@ void ble_send_map_data(uint8_t map_idx) {
     for (uint8_t i = 0; i < count; i++) {
         const Waypoint_t *wp = map_get_waypoint(map_idx, i);
         if (wp) {
-            snprintf(buf, sizeof(buf), "WP:%u,%u,%lu,%d,%u",
-                     map_idx, i, (unsigned long)wp->start_ticks, wp->target_speed, wp->action);
+            snprintf(buf, sizeof(buf), "WP:%u,%u,%lu,%d,%u,%.2f,%.2f",
+                     map_idx, i, (unsigned long)wp->start_ticks, wp->target_speed, wp->action, wp->kp, wp->kd);
             ble_send_string(buf);
             delay(15); // Khoảng nghỉ nhỏ để tránh tràn bộ đệm BLE Notify
         }

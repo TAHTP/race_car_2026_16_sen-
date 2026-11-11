@@ -25,6 +25,8 @@ typedef struct {
     uint32_t start_ticks;    // Mốc xung encoder BẮT ĐẦU phân đoạn
     int16_t  target_speed;   // Tốc độ nền mong muốn (baseSpeed: 0 - 255)
     uint8_t  action;         // WaypointAction_t
+    float    kp;             // Kp riêng của mốc (<= 0: tự dùng Kp mặc định trên Web)
+    float    kd;             // Kd riêng của mốc (<= 0: tự dùng Kd mặc định trên Web)
 } Waypoint_t;
 
 // Cấu trúc 1 Bản đồ sa bàn
@@ -48,13 +50,13 @@ void map_set_right_lane(bool is_right); // true: Làn Phải (Mirror), false: L�
 bool map_is_right_lane(void);
 
 // Thao tác sửa mốc trực tiếp từ Web BLE
-bool map_set_waypoint(uint8_t map_idx, uint8_t wp_idx, uint32_t ticks, int16_t speed, uint8_t action);
+bool map_set_waypoint(uint8_t map_idx, uint8_t wp_idx, uint32_t ticks, int16_t speed, uint8_t action, float kp, float kd);
 void map_clear_waypoints(uint8_t map_idx);
 uint8_t map_get_waypoint_count(uint8_t map_idx);
 const Waypoint_t* map_get_waypoint(uint8_t map_idx, uint8_t wp_idx);
 
 // Hàm truy vấn thời gian thực cho bộ điều khiển PID (Core 1)
-void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, uint8_t *out_wp_idx);
+void map_get_current_action(uint32_t current_ticks, int16_t *out_speed, uint8_t *out_action, float *out_kp, float *out_kd, uint8_t *out_wp_idx);
 
 #ifdef __cplusplus
 }

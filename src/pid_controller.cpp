@@ -30,6 +30,9 @@ static float integralError = 0.0f;
 static float lastCorrection = 0.0f;
 static unsigned long lastComputeTime = 0;
 static float s_ramped_base = 0.0f; // Tốc độ nền tăng tốc mềm (Soft-start Ramp)
+static float s_default_kp = 4.0f;
+static float s_default_ki = 0.0f;
+static float s_default_kd = 20.0f;
 
 #define DASHED_LINE_TIMEOUT_MS  60    // Thời gian cho phép lướt qua nét đứt (ms)
 static unsigned long lostLineStartTime = 0;
@@ -54,6 +57,9 @@ void pid_init(float kp, float ki, float kd, int16_t baseSpeed) {
     pidConfig.Ki = ki;
     pidConfig.Kd = kd;
     pidConfig.baseSpeed = baseSpeed;
+    s_default_kp = kp;
+    s_default_ki = ki;
+    s_default_kd = kd;
     lastError = 0.0f;
     integralError = 0.0f;
     lastComputeTime = millis();
@@ -71,6 +77,21 @@ void pid_set_tunings(float kp, float ki, float kd) {
     pidConfig.Kp = kp;
     pidConfig.Ki = ki;
     pidConfig.Kd = kd;
+}
+
+void pid_set_default_tunings(float kp, float ki, float kd) {
+    s_default_kp = kp;
+    s_default_ki = ki;
+    s_default_kd = kd;
+    pid_set_tunings(kp, ki, kd);
+}
+
+float pid_get_default_kp(void) {
+    return s_default_kp;
+}
+
+float pid_get_default_kd(void) {
+    return s_default_kd;
 }
 
 void pid_set_base_speed(int16_t speed) {
@@ -125,10 +146,10 @@ bool pid_calculate_position(float *outPosition, uint8_t *outBlackCount) {
 
     int start_i = 0;
     int end_i = N_SENSORS - 1;
-    if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Ép chỉ đọc nhánh trái
-        end_i = 8;
-    } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Ép chỉ đọc nhánh phải
-        start_i = 7;
+    if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Giữ mắt 0..9 (bỏ mắt 10..15 bên phải)
+        end_i = 9;
+    } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Giữ mắt 6..15 (bỏ mắt 0..5 bên trái)
+        start_i = 6;
     }
 
     // Quét các mắt theo kịch bản với giá trị chuẩn hóa Analog (0 - 1000)
@@ -368,18 +389,43 @@ void pid_line_follow_step(void) {
                 int16_t currentBase = (int16_t)s_ramped_base - (int16_t)(absErr * 0.55f);
                 if (currentBase < 40) currentBase = 40;
 
-                // Tắt hoàn toàn auto_boost để xe giữ đúng tốc độ, không tự nhồi ga khi ôm cua làm văng xe
-                leftSpeed  = currentBase + (int16_t)lastCorrection;
-                rightSpeed = currentBase - (int16_t)lastCorrection;
+                // TRỢ LỰC BẺ LÁI BẰNG ĐỘNG CƠ KHI ÉP TRÁI / ÉP PHẢI (ƯU TIÊN LINE):
+                // - Động cơ chủ động tạo lực vi sai (bias) để kéo dứt khoát đầu xe về nhánh chỉ định.
+                // - Ưu tiên line: Khi vạch đã dạt sâu về hướng ép (nguy cơ văng mép ngoài sa bàn), lực ép
+                //   tự động giảm êm về 0 để nhường 100% quyền cho vòng lặp PID bám giữ vạch.
+                int16_t force_bias = 0;
+                if (s_sector_action == 1) { // ACTION_FORCE_LEFT: Ép rẽ trái (L giảm, R tăng => bias âm)
+                    float force_scale = 1.0f;
+                    if (position < -10.0f) {
+                        force_scale = (position - (-45.0f)) / 35.0f; // từ 1.0 tại -10 xuống 0.0 tại -45
+                        force_scale = constrain(force_scale, 0.0f, 1.0f);
+                    }
+                    force_bias = - (int16_t)(28.0f * force_scale);
+                } else if (s_sector_action == 2) { // ACTION_FORCE_RIGHT: Ép rẽ phải (L tăng, R giảm => bias dương)
+                    float force_scale = 1.0f;
+                    if (position > 10.0f) {
+                        force_scale = (45.0f - position) / 35.0f; // từ 1.0 tại +10 xuống 0.0 tại +45
+                        force_scale = constrain(force_scale, 0.0f, 1.0f);
+                    }
+                    force_bias = + (int16_t)(28.0f * force_scale);
+                }
+
+                int16_t steer_total = (int16_t)lastCorrection + force_bias;
+                leftSpeed  = currentBase + steer_total;
+                rightSpeed = currentBase - steer_total;
 
                 // Giới hạn trong dải an toàn
                 leftSpeed  = clamp_int16(leftSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
                 rightSpeed = clamp_int16(rightSpeed, pidConfig.minSpeed, pidConfig.maxSpeed);
             } else {
                 // CHẾ ĐỘ TEST CĂN TÂM TĨNH TRÊN BÀN (baseSpeed = 0):
-                // Lệch trái -> bánh quay đưa về phải; Lệch phải -> bánh quay đưa về trái; Chuẩn tâm -> đứng yên!
-                leftSpeed  = clamp_int16((int16_t)lastCorrection, -120, 120);
-                rightSpeed = clamp_int16(-(int16_t)lastCorrection, -120, 120);
+                int16_t force_bias = 0;
+                if (s_sector_action == 1) force_bias = -20;
+                else if (s_sector_action == 2) force_bias = 20;
+
+                int16_t steer_total = (int16_t)lastCorrection + force_bias;
+                leftSpeed  = clamp_int16(steer_total, -120, 120);
+                rightSpeed = clamp_int16(-steer_total, -120, 120);
             }
 
             motor_set_speeds(leftSpeed, rightSpeed);
@@ -408,6 +454,15 @@ void pid_line_follow_step(void) {
             // Mất vạch quá 1.5 giây -> Phanh dừng xe an toàn
             if (lostElapsed > 1500) {
                 motor_stop();
+                break;
+            }
+
+            // ƯU TIÊN LỆNH ÉP SA BÀN: Nếu đang trong phân đoạn Ép Trái / Phải mà mất vạch -> Cương quyết xoay về đúng hướng ép!
+            if (s_sector_action == 1) {
+                motor_set_speeds(t_rev, t_fwd); // Đang ép trái -> Xoay mạnh tìm vạch bên trái
+                break;
+            } else if (s_sector_action == 2) {
+                motor_set_speeds(t_fwd, t_rev); // Đang ép phải -> Xoay mạnh tìm vạch bên phải
                 break;
             }
 
